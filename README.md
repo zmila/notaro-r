@@ -2,19 +2,27 @@
 
 Notare = "aro de notoj", set of notes, simple note-keeping app.
 Written in tinyjs (https://tinyjs.app/docs.html), this implementation is in React.js. 
-Database is Sqlite, in file notes.db located in root of the app. 
+Database is SQLite, in file `notes.db` located in root of the app (auto-created on first run). 
+Notes support Markdown formatting.
 
-## How to run
 
-install dependencies
-> npm install
+Currently implemented:
+ - create note;
+ - edit note;
+ - delete note;
+ - filtering by tag, date and text;
+ - sorting by updated/created date or title.
 
-run dev build with hot reload
-> tinyjs dev 
+## Screenshots
 
-create executable in `.dist` folder
-> tinyjs build
+Main screen:
+![main screen](./docs/main_screen.png)
 
+Filtering:
+![filtering](./docs/filtering.png)
+
+Edit popup:
+![edit popup](./docs/edit_popup.png)
 
 
 ## Keyboard shortcuts
@@ -40,3 +48,15 @@ create executable in `.dist` folder
 - `Tab` in the body: insert a tab, or indent selected lines.
 - `Shift+Tab` in the body: outdent selected lines.
 - `Ctrl+Tab` in the body: toggle Edit/Preview mode.
+
+
+## How to run
+
+install dependencies
+> npm install
+
+run dev build with hot reload
+> tinyjs dev 
+
+create executable in `.dist` folder
+> tinyjs build
