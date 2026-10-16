@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MarkdownContent } from './MarkdownContent'
 import type { Note } from '../types'
 
@@ -57,10 +57,36 @@ interface NotesPanelProps {
   onEdit: (note: Note) => void
 }
 
+const INITIAL_NOTE_COUNT = 20
+const NOTE_BATCH_SIZE = 50
+
+// Render the first cards right away and mount the rest in batches, yielding
+// to the browser between batches so the first screen paints quickly.
+function useProgressiveLimit(total: number): number {
+  const [limit, setLimit] = useState(INITIAL_NOTE_COUNT)
+
+  useEffect(() => {
+    if (limit >= total) return
+    let timer = 0
+    // rAF + setTimeout: run after the current frame has actually been painted.
+    const frame = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setLimit((current) => current + NOTE_BATCH_SIZE), 0)
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      clearTimeout(timer)
+    }
+  }, [limit, total])
+
+  return limit
+}
+
 export function NotesPanel({ notes, terms, selectedId, firstMatchId, onSelect, onEdit }: NotesPanelProps) {
+  const limit = useProgressiveLimit(notes.length)
+
   return (
     <div id="notes-panel" className="notes" tabIndex={-1}>
-      {notes.map((note) => (
+      {notes.slice(0, limit).map((note) => (
         <NoteCard
           key={note.id}
           note={note}

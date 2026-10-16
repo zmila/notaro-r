@@ -1,8 +1,18 @@
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 
+const MARKDOWN_CACHE_LIMIT = 2000
+const markdownCache = new Map<string, string>()
+
 export function markdownHtml(value: string): string {
-  return DOMPurify.sanitize(marked.parse(value, { breaks: true, async: false }))
+  const cached = markdownCache.get(value)
+  if (cached !== undefined) return cached
+  const html = DOMPurify.sanitize(marked.parse(value, { breaks: true, async: false }))
+  if (markdownCache.size >= MARKDOWN_CACHE_LIMIT) {
+    markdownCache.delete(markdownCache.keys().next().value!)
+  }
+  markdownCache.set(value, html)
+  return html
 }
 
 export function highlightHtml(html: string, terms: string[]): string {
