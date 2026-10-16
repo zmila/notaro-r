@@ -1,5 +1,9 @@
 // src/main.js
 import { Database } from 'tjs:sqlite';
+import { TRAY_ICON_PNG_BASE64 } from './trayIcon';
+
+const HOTKEY = 'ctrl+alt+f11';
+const HOTKEY_LABEL = 'Ctrl+Alt+F11';
 
 interface NoteRow {
   id: number;
@@ -36,8 +40,8 @@ let ready = Promise.resolve();
 
 export function init(_app: TinyApp) {
 
-  // magic, workaround to show react tinyjs app in windows. 
-  (_app as any).setMenu([{ title: 'Help', items: [] }]);
+  _app.menu.set([{ title: 'Help', items: [] }]);
+  setupTray(_app);
   
   // tjs.* fs is async; sqlite is sync — mkdir MUST complete first.
   // But init() isn't awaited by the runtime, so do the setup in an
@@ -78,6 +82,77 @@ export function init(_app: TinyApp) {
   })();
 }
 
+// ---------------------------------------------------------------- tray
+
+function decodeBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// X and minimize hide to tray; the tray icon and the hotkey bring it back
+function setupTray(app: TinyApp) {
+  app.setHideOnClose(true);
+  try { app.hotkey.register('toggle', HOTKEY); } catch (e) { console.error('hotkey', e); }
+
+  (async () => {
+    // the icon ships inside the backend bundle, so it works in dev and builds;
+    // app.paths() is a function since tinyjs 0.57 (the bundled tiny.d.ts predates it)
+    const paths = app.paths as unknown;
+    const dir = typeof paths === 'function' ? (await paths()).cache : app.paths.cache;
+    await tjs.makeDir(dir, { recursive: true });
+    const icon = dir + '/tray-n.png';
+    await tjs.writeFile(icon, decodeBase64(TRAY_ICON_PNG_BASE64));
+    app.tray.set({
+      icon,
+      template: false,
+      tooltip: `Notaro (${HOTKEY_LABEL})`,
+      primaryAction: true,
+      menu: [
+        { id: 'toggle', label: `Show / Hide   ${HOTKEY_LABEL}` },
+        { separator: true },
+        { id: 'quit', label: 'Quit' },
+      ],
+    });
+  })().catch((e) => console.error('tray', e));
+}
+
+const mainWin = (app: TinyApp) => app.window('main');
+
+function hideToTray(app: TinyApp) {
+  mainWin(app).hide({ app: false });
+}
+
+function showFromTray(app: TinyApp, st: TinyWinState) {
+  mainWin(app).show();
+  if (st.minimized) mainWin(app).restore();
+}
+
+// requireFocus: the hotkey hides only a focused window (a visible one behind
+// other apps is raised instead); a tray click always steals focus, so it
+// doesn't care
+async function toggleWindow(app: TinyApp, requireFocus: boolean) {
+  const st = await mainWin(app).getState();
+  if (!st) return;
+  const shown = st.visible && !st.minimized && (!requireFocus || st.focused);
+  if (shown) hideToTray(app);
+  else showFromTray(app, st);
+}
+
+export function onTray(id: string | null, app: TinyApp) {
+  if (id === null || id === 'toggle') return toggleWindow(app, false);
+  if (id === 'quit') return app.quit();
+}
+
+export function onHotkey(id: string, app: TinyApp) {
+  if (id === 'toggle') return toggleWindow(app, true);
+}
+
+export function onWindowState(info: { win?: string; minimized?: boolean }, app: TinyApp) {
+  if ((info.win ?? 'main') === 'main' && info.minimized) hideToTray(app);
+}
+
 // inserts a single demo note into a fresh database
 function seed() {
   if (stmts.count.all()[0].n > 0) return;
@@ -106,6 +181,9 @@ function normalizeTags(tags: NoteInput['tags'] = []): string {
 }
 
 export const api: Record<string, TinyApiHandler> = {
+  // Alt+F4 in the page: terminate instead of hiding to tray
+  quitApp: (_params, app) => { app.quit(); return true; },
+
   listNotes: withDb(() => stmts.list.all().map(rowToNote)),
 
   countNotes: withDb(() => stmts.count.all()[0].n),

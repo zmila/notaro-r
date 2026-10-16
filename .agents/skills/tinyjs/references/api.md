@@ -3,12 +3,21 @@
 The `tiny` global is injected into every page automatically (no script tag);
 TypeScript definitions ship in types/tiny.d.ts. Backend handlers receive the
 `app` object with a mirrored surface (`app.window(id).*`, `app.audio.sampler`,
-`app.clipboard.*` …). Where backend names differ from the page's:
-`tiny.menu.set` → `app.setMenu`, `menu.update/get` → `app.updateMenuItem/
-getMenuItem`, `menu.setContext` → `app.setContextMenu`, `win.setChrome` →
-`app.setChrome`, `tiny.audio.filters/filter/balance` →
-`app.setAudioFilters/setAudioFilter/setAudioBalance` (`app.audio` holds only
-`sampler`). There is no `app.menu.*` / `app.audio.filters`.
+`app.clipboard.*` …). Since 0.57.0 the backend uses the page's names:
+`app.menu.set/update/get/setContext`, `app.audio.filters/filter/balance/clear`,
+`app.win.*` (the main window, plus `app.win.open(id, opts)`),
+`app.window(id).menu.*`, `app.system.*` (all of tiny.system's
+os/isX/info/architecture/capabilities/requirements/missing too),
+`app.theme.get()`, `app.info()` / `app.paths()` (functions, as in a page), and
+`app.notify(title, body, opts)`. Main-window ops
+also stay at the top level (`app.setTitle`, `app.setChrome`, …). The old
+backend names (`app.setMenu`, `app.updateMenuItem`, `app.getMenuItem`,
+`app.setContextMenu`, `app.openWindow`, `app.getWinState`,
+`app.setAudioFilters/setAudioFilter/setAudioBalance`,
+`app.window(id).setMenu/resetMenu/updateMenuItem/getMenuItem`,
+`app.notify({ title, body })`, reading `app.info.x` / `app.paths.x` as
+objects) still work but log a deprecation warning —
+don't write new code with them.
 
 ## Bridge basics
 
@@ -104,7 +113,9 @@ el.addEventListener('mousedown', () => tiny.win.startDrag({ files: [path] }));
 
 tiny.win.print();                 // native print panel — the CALLING window
 await tiny.win.printToPDF(path);  // vector PDF of the calling window —
-                                  // macOS: ONE tall page; win/linux paginate
+                                  // macOS: ONE tall page; win/linux paginate.
+                                  // Other origins: Downloads/app data/temp,
+                                  // else the user picks in a save panel
 tiny.win.share({ text, url, paths, x, y });  // native share sheet, anchored at
                                   // the click's clientX/Y — macOS only
 
@@ -118,9 +129,9 @@ tiny.win.open('settings', { page: 'settings.html', title: 'Settings',
 // with the parent. Open-time only.
 // page: an http(s) URL or a file INSIDE the frontend dir — from a page,
 // anything else (../ walks, other absolute paths, file:) is refused;
-// backend app.openWindow takes any path.
+// backend app.win.open takes any path.
 // chrome + x/y + minSize apply BEFORE first paint. win.* calls target the
-// caller's window; backend: app.openWindow(...), app.window(id).eval/push/
+// caller's window; backend: app.win.open(...), app.window(id).eval/push/
 // close/setTitle/…, app.push broadcasts; export onWindowClosed(id, app).
 tiny.win.id; tiny.win.close(); await tiny.win.windows();
 ```
@@ -152,6 +163,12 @@ tiny.menu.set([
                                              // items are DROPPED: declare
                                              // them in a menu of your own
                                              // there too. First block wins.
+  { role: 'help', items: [                   // Help menu: macOS puts it LAST,
+    { id: 'site', label: 'Visit Website' },  // adds the search field, and —
+  ]},                                        // with macos.helpBook — "<App>
+                                             // Help" ⌘? above these
+                                             // (standard: false drops it).
+                                             // win/linux: plain "Help" menu.
   { title: 'Actions', items: [
     { id: 'open', label: 'Open…', key: 'o' },        // ⌘O (Ctrl+O win/linux)
     { id: 'find', label: 'Find', key: 'alt+shift+f' },// ⌥⇧⌘F — extra modifiers
@@ -163,7 +180,13 @@ tiny.menu.set([
     { id: 'more', label: 'More', submenu: [{ id: 'a', label: 'Sub' }] },
   ]}]);
 tiny.menu.on((id) => ...);   // "about": "menu" in tinyjs.json routes macOS's
-                             // About item here as id 'about' (own panel)
+                             // About item here as id 'about' (own panel).
+                             // To keep the standard panel but change its
+                             // credit: assets/Credits.html (or .rtf/.rtfd;
+                             // bundled by `tinyjs build`, shown with its
+                             // links; needs <meta charset="utf-8"> and a
+                             // font, or it's Latin-1 in Times), else
+                             // "attribution": "…" in tinyjs.json
 tiny.menu.update('mute', { checked: false, label: 'Unmuted' });
 await tiny.menu.get('mute');   // { exists, label, checked, enabled }
 ```
@@ -182,6 +205,7 @@ tiny.menu.setContext([{ id, label }, { separator: true }]);  // right-click
 tiny.menu.onContext((id) => ...);       // backend: export onContextMenu
 // "contextMenu": false in tinyjs.json hides WebKit's default menu entirely
 // "debug": true in tinyjs.json = F12 opens devtools in their own window
+//   (⌥⌘I also works on macOS)
 //   ("open" auto-opens them per window; default off, `tinyjs dev` forces on)
 // "browserAccelerators": true re-enables WebView2's own keys (Ctrl+F find,
 //   Ctrl+R reload, Ctrl+P print…); default suppressed so they can't fire
@@ -200,6 +224,9 @@ await tiny.dialog.pickFolder();   // path | null       saveFile() -> path|null
 // OS (Linux: only with the type filter selected; its overwrite prompt sees
 // the name as typed).
 await tiny.dialog.openFile({ types: ['md', 'markdown', 'txt'] });
+// saveFile({ name }) pre-fills the file name field (a name, not a path;
+// any folder part is dropped). The extension rule above still applies.
+await tiny.dialog.saveFile({ types: ['docx'], name: 'report' });
 await tiny.dialog.alert(message, detail);
 await tiny.dialog.confirm(message, { detail, ok, cancel });   // true | false
 await tiny.dialog.prompt(message, { default, ok, cancel });   // string | null
@@ -225,14 +252,18 @@ caps.api;                             // { gated, denied: [...] } for THIS origi
 ```
 
 ```js
-// BACKEND side (src/main.js) — export these like any other hook
+// BACKEND side (src/backend/main.js) — export these like any other hook
 export function onNavigate(info, app) {
   // kind: 'policy' | 'start' | 'commit' | 'finish' | 'fail' | 'crash'
   // 'policy' fires for main-frame http(s) BEFORE the navigation runs:
-  if (info.kind === 'policy' && !info.url.startsWith('https://app.example.com'))
+  if (info.kind === 'policy' && /^https?:/.test(info.url) &&
+      new URL(info.url).origin !== 'https://app.example.com')
     return 'external';       // 'deny' | 'external' (open in the real browser)
   // anything else — or answering slower than ~400ms — allows, so a wrapper
-  // can never deadlock its own first load. 'start'/'finish'/'fail' are the
+  // can never deadlock its own first load. Other schemes (mailto:,
+  // someapp://…, any frame) are asked too, but the webview never loads
+  // them: 'external' hands them to the OS, and anything else denies.
+  if (info.kind === 'policy' && info.url.startsWith('mailto:')) return 'external'; 'start'/'finish'/'fail' are the
   // raw material for loading / offline / crashed overlays.
 }
 export function onDownload(info, app) { /* state: started|progress|done|failed|denied|cancelled */ }
@@ -241,8 +272,10 @@ export function onWindowOpen(info, app) {
   // 'deny'; 'window' only works if "popups": "window" (the webview has to be
   // returned synchronously). kind 'open' reports the outcome.
 }
-// api handlers also get meta.origin — the calling frame's origin, engine-
-// attested, the same value the "api" origins gate keys off:
+// api handlers also get meta.origin — the same value the "api" origins
+// gate keys off, stamped by the launcher from the engine, never the page.
+// macOS and Windows report the calling frame; Linux reports the window's
+// MAIN-frame origin (WebKitGTK can't say which frame sent it):
 export const api = { save: async (p, app, meta) => meta.origin };
 ```
 
@@ -338,7 +371,8 @@ tiny.audioTap.on(({ pcm, sampleRate, channels, frames, t }) => {
 
 // ── cross-origin stream INTO Web Audio (mac + linux): MediaElementSource on a
 // cross-origin <audio> is silent by spec; proxyURL streams through the
-// native layer with permissive CORS so it's untainted.
+// native layer with permissive CORS so it's untainted. App's own pages only;
+// another origin needs "media.proxy" in its "api".origins key.
 audio.crossOrigin = 'anonymous';
 audio.src = tiny.proxyURL('https://host/stream.mp3');
 
@@ -358,8 +392,13 @@ audio.src = tiny.fileURL(path);  // file:// URL for a disk path — ALWAYS this,
 // file:// media loads only under the frontend dir by default — widen with
 // "readAccess": true | "/path" in tinyjs.json.
 await tiny.app.paths();   // { home, data, cache, logs, temp, downloads,
-                          //   desktop, documents } — per-OS correct; backend
-                          //   twin app.paths is a plain object (no await)
+                          //   desktop, documents, resources, executables } — per-OS correct; backend
+                          //   twin: await app.paths() (same shape)
+// resources: the project's resources/ folder in dev, its bundled copy in
+// builds, null without one. Backend: (await app.paths()).resources.
+// executables: this OS's sidecars from executables/, flat (.build/executables
+// in dev, a .app's Contents/Helpers in builds), null without any — tjs.spawn
+// (await app.paths()).executables + '/<name>'.
 await tiny.app.shell.open('https://x.com');  // URL or path; resolves true/rejects
 await tiny.app.shell.reveal(path); await tiny.app.shell.trash(path);
 await tiny.app.thumbnail(path, size?);  // png for ANY path (macOS/Windows:
@@ -372,7 +411,8 @@ await tiny.app.thumbnail(path, size?);  // png for ANY path (macOS/Windows:
 ```js
 await tiny.store.set('key', anyJsonValue); await tiny.store.get('key');
 await tiny.store.delete('key'); await tiny.store.all();
-// per-app data dir; fine for settings. Query-shaped data -> sqlite (backend):
+// per-app data dir; fine for settings. Query-shaped data -> sqlite (BACKEND
+// ONLY: the page has no tjs global / tjs:* imports; expose api functions):
 //   import { Database } from 'tjs:sqlite';
 //   await tjs.makeDir(dir, { recursive: true });  // fs is async; db is NOT
 //   new Database(path).prepare(sql).run(...)/.all()
@@ -530,8 +570,8 @@ tiny.app.onOpenFiles((paths) => ...);  // "fileExtensions": ["md"]; also argv
 // tinyjs.json: "update": { "url": "https://…/manifest.json", "auto": "launch"|"daily" }
 tiny.api.on('update-available', ({ current, latest, notes }) => ...);
 // backend: export onUpdateAvailable(info, app)
-const { available, latest } = await tiny.api.call('update.check');
-await tiny.api.call('update.install');   // verify sha256 + swap + relaunch
+const { available, latest } = await tiny.app.update.check();
+await tiny.app.update.install();   // verify sha256 + swap + relaunch
 ```
 
 Full packaging/manifests: references/release.md.

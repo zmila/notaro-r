@@ -11,7 +11,11 @@ Currently implemented:
  - edit note;
  - delete note;
  - filtering by tag, date and text;
- - sorting by updated/created date or title.
+ - sorting by updated/created date or title;
+ - tray icon (letter N): minimizing or closing the window with the `X` button hides it to the tray,
+   `Alt+F4` quits the app; left click on the icon shows/hides it, right click opens a menu with `Show / Hide` and `Quit`;
+ - global shortcut `Ctrl+Alt+F11` shows/hides the app from anywhere;
+ - app icon (thin N, `assets/icon.png`) in the window title bar and taskbar, embedded into the exe by `tinyjs build`.
 
 ## Screenshots
 
@@ -26,6 +30,11 @@ Edit popup:
 
 
 ## Keyboard shortcuts
+
+### Global
+
+- `Ctrl+Alt+F11`: show the app (also restores it from the tray), or hide it to the tray when it is focused.
+- `Alt+F4`: quit the app (the `X` button only hides it to the tray).
 
 ### Browsing notes
 
