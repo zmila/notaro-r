@@ -15,7 +15,8 @@ Currently implemented:
  - tray icon (letter N): minimizing or closing the window with the `X` button hides it to the tray,
    `Alt+F4` quits the app; left click on the icon shows/hides it, right click opens a menu with `Show / Hide` and `Quit`;
  - global shortcut `Ctrl+Alt+F11` shows/hides the app from anywhere;
- - app icon (thin N, `assets/icon.png`) in the window title bar and taskbar, embedded into the exe by `tinyjs build`.
+ - app icon (thin N, `assets/icon.png`) in the window title bar and taskbar, embedded into the exe by `tinyjs build`;
+ - `Help > About Notaro` popup showing the current version and release date (taken from the top section of `changelog.md`, `## version X.Y.Z, YYYY-MM-DD`).
 
 ## Screenshots
 
@@ -27,6 +28,9 @@ Filtering:
 
 Edit popup:
 ![edit popup](./docs/edit_popup.png)
+
+About popup:
+![about popup](./docs/about.png)
 
 
 ## Keyboard shortcuts
@@ -69,3 +73,16 @@ run dev build with hot reload
 
 create executable in `.dist` folder
 > tinyjs build
+
+## Versioning
+
+`changelog.md` is the single source of truth for the version and release date: its top
+`## version X.Y.Z, YYYY-MM-DD` entry is shown in `Help > About Notaro`.
+The `"version"` in `tinyjs.json` (used by `tinyjs build`) must match it;
+`npm run build` (and therefore `tinyjs build`) fails when they differ.
+Check manually with
+> npm run check-version
+
+To release, ask the `Update Changelog` agent (`.github/agents/update-changelog.agent.md`),
+e.g. "update changelog, minor": it adds a new section with the bumped version and today's date
+and updates `tinyjs.json`.

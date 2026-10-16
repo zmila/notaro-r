@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "prebuild": "node scripts/check-version.mjs",
     "build": "tsc -b && vite build --base=./",
+    "check-version": "node scripts/check-version.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },

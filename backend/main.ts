@@ -40,7 +40,7 @@ let ready = Promise.resolve();
 
 export function init(_app: TinyApp) {
 
-  _app.menu.set([{ title: 'Help', items: [] }]);
+  _app.menu.set([{ title: 'Help', items: [{ id: 'about', label: 'About Notaro' }] }]);
   setupTray(_app);
   
   // tjs.* fs is async; sqlite is sync — mkdir MUST complete first.

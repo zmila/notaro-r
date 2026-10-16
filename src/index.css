@@ -164,6 +164,13 @@ button { cursor: pointer; }
 .mode-button.active { background: var(--head-sel); border-color: var(--accent); }
 .dialog-btn { height: auto; padding: 5px 12px; }
 
+.about { inset: 0; margin: auto; padding: 0; width: 26em; max-width: 92vw; color: var(--text); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; }
+.about::backdrop { background: rgb(0 0 0 / 25%); }
+.about-form { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px 12px; }
+.about-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.about a { color: var(--accent); cursor: pointer; }
+.about-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+
 @media (max-width: 720px) {
   .app { grid-template-columns: 9em 1fr 9em; }
   .dialog { width: 92vw; height: 82vh; }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AboutDialog } from './components/AboutDialog'
 import { CalendarPanel } from './components/CalendarPanel'
 import { NoteDialog } from './components/NoteDialog'
 import { NotesPanel } from './components/NotesPanel'
@@ -30,6 +31,7 @@ export default function App() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [dialogNote, setDialogNote] = useState<Note | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     const result = await tiny.api.call('listNotes', {}) as Note[]
@@ -39,6 +41,10 @@ export default function App() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => tiny.menu.on((id) => {
+    if (id === 'about') setAboutOpen(true)
+  }), [])
 
   const sortedNotes = useMemo(() => [...notes].sort((a, b) => {
     const order = sortDirection === 'asc' ? 1 : -1
@@ -139,7 +145,7 @@ export default function App() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (dialogOpen) return
+      if (dialogOpen || aboutOpen) return
       const target = event.target as HTMLElement | null
       const typing = target?.matches('input, textarea, select') ?? false
       if (commandKey(event) && event.key.toLowerCase() === 'f') {
@@ -201,6 +207,7 @@ export default function App() {
         onClose={() => setDialogOpen(false)}
         onSave={saveNote}
       />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   )
 }
