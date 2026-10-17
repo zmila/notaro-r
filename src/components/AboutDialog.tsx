@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent } from 'react'
+import { useEffect, useRef } from 'react'
 import { about } from '../about'
 
 interface AboutDialogProps {
@@ -25,11 +25,6 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
     onClose()
   }
 
-  function openLink(event: MouseEvent<HTMLAnchorElement>) {
-    event.preventDefault()
-    void tiny.app.shell.open(about.url)
-  }
-
   return (
     <dialog
       ref={dialogRef}
@@ -46,7 +41,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
         <h2 className="about-name">{about.name}</h2>
         <p>Version {about.version}, released {about.date}</p>
         <p>{about.description}</p>
-        <p>Written with tinyjs (<a href={about.url} onClick={openLink}>{about.url}</a>)</p>
+        <p>Written with tinyjs (<a href={about.url}>{about.url}</a>)</p>
         <div className="about-actions">
           <button ref={okRef} type="submit" className="head-btn dialog-btn">OK</button>
         </div>

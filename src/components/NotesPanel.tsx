@@ -9,13 +9,20 @@ interface NoteCardProps {
   firstMatch: boolean
   onSelect: () => void
   onEdit: () => void
+  onMenu: (x: number, y: number, text: string) => void
 }
 
 function shortDate(value: string): string {
   return String(value ?? '').slice(0, 16)
 }
 
-function NoteCard({ note, terms, selected, firstMatch, onSelect, onEdit }: NoteCardProps) {
+function selectedText(card: HTMLElement): string {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || !selection.anchorNode || !card.contains(selection.anchorNode)) return ''
+  return selection.toString()
+}
+
+function NoteCard({ note, terms, selected, firstMatch, onSelect, onEdit, onMenu }: NoteCardProps) {
   const bodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -33,10 +40,22 @@ function NoteCard({ note, terms, selected, firstMatch, onSelect, onEdit }: NoteC
   return (
     <article
       className={`note${selected ? ' selected' : ''}`}
-      onClick={onSelect}
-      onDoubleClick={onEdit}
+      onClick={(event) => {
+        // A drag-selection, a word double-click or a click in an already
+        // selected card's text is about the text, not about the card.
+        const inText = (event.target as Element).closest('.note-text') !== null
+        if (!inText) window.getSelection()?.removeAllRanges()
+        else if (event.detail > 1 || selected || selectedText(event.currentTarget)) return
+        onSelect()
+      }}
+      onContextMenu={(event) => {
+        // Shift+right-click keeps the browser's own menu (Inspect).
+        if (event.shiftKey) return
+        event.preventDefault()
+        onMenu(event.clientX, event.clientY, selectedText(event.currentTarget))
+      }}
     >
-      <div className="note-head">
+      <div className="note-head" onDoubleClick={onEdit}>
         <h3 className="note-title">{note.title}</h3>
         <time className="note-date">
           {shortDate(note.updated_at)}
@@ -55,6 +74,7 @@ interface NotesPanelProps {
   firstMatchId: number | null
   onSelect: (note: Note) => void
   onEdit: (note: Note) => void
+  onMenu: (note: Note | null, x: number, y: number, text: string) => void
 }
 
 const INITIAL_NOTE_COUNT = 20
@@ -81,11 +101,21 @@ function useProgressiveLimit(total: number): number {
   return limit
 }
 
-export function NotesPanel({ notes, terms, selectedId, firstMatchId, onSelect, onEdit }: NotesPanelProps) {
+export function NotesPanel({ notes, terms, selectedId, firstMatchId, onSelect, onEdit, onMenu }: NotesPanelProps) {
   const limit = useProgressiveLimit(notes.length)
 
   return (
-    <div id="notes-panel" className="notes" tabIndex={-1}>
+    <div
+      id="notes-panel"
+      className="notes"
+      tabIndex={-1}
+      onContextMenu={(event) => {
+        // Cards open their own menu first; this is the empty space around them.
+        if (event.defaultPrevented || event.shiftKey) return
+        event.preventDefault()
+        onMenu(null, event.clientX, event.clientY, '')
+      }}
+    >
       {notes.slice(0, limit).map((note) => (
         <NoteCard
           key={note.id}
@@ -95,6 +125,7 @@ export function NotesPanel({ notes, terms, selectedId, firstMatchId, onSelect, o
           firstMatch={note.id === firstMatchId}
           onSelect={() => onSelect(note)}
           onEdit={() => onEdit(note)}
+          onMenu={(x, y, text) => onMenu(note, x, y, text)}
         />
       ))}
     </div>

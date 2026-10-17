@@ -40,7 +40,30 @@ let ready = Promise.resolve();
 
 export function init(_app: TinyApp) {
 
-  _app.menu.set([{ title: 'Help', items: [{ id: 'about', label: 'About Notaro' }] }]);
+  _app.menu.set([
+    // Native accelerators: WebView2's browser-key filter swallows Ctrl+B/I/U/K/D
+    // (and Ctrl+N) before the page sees them, but menu accelerators always fire.
+    { title: 'Note', items: [
+      { id: 'note:new', label: 'New Note', key: 'n' },
+    ] },
+    { title: 'Format', items: [
+      { id: 'format:bold', label: 'Bold', key: 'b' },
+      { id: 'format:italic', label: 'Italic', key: 'i' },
+      { id: 'format:underline', label: 'Underline', key: 'u' },
+      { id: 'format:strike', label: 'Strikethrough', key: 'k' },
+      { id: 'format:code', label: 'Monospace', key: 'm' },
+      { separator: true },
+      { id: 'format:heading1', label: 'Heading 1', key: '1' },
+      { id: 'format:heading2', label: 'Heading 2', key: '2' },
+      { id: 'format:heading3', label: 'Heading 3', key: '3' },
+      { separator: true },
+      { id: 'format:orderedList', label: 'Numbered List', key: '9' },
+      { id: 'format:bulletList', label: 'Bulleted List', key: '0' },
+      { separator: true },
+      { id: 'format:clear', label: 'Clear Formatting', key: 'd' },
+    ] },
+    { title: 'Help', items: [{ id: 'about', label: 'About Notaro' }] },
+  ]);
   setupTray(_app);
   
   // tjs.* fs is async; sqlite is sync — mkdir MUST complete first.

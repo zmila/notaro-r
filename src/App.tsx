@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AboutDialog } from './components/AboutDialog'
 import { CalendarPanel } from './components/CalendarPanel'
+import { ContextMenu } from './components/ContextMenu'
 import { NoteDialog } from './components/NoteDialog'
 import { NotesPanel } from './components/NotesPanel'
 import { SortControls, Toolbar } from './components/Toolbar'
 import { TagsPanel } from './components/TagsPanel'
+import { noteToText, textToDraft } from './noteClipboard'
 import type { Note, NoteDraft, SortDirection, SortField } from './types'
 
 function splitTags(value: string): string[] {
@@ -30,8 +32,11 @@ export default function App() {
   const [sortField, setSortField] = useState<SortField>('updated')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [dialogNote, setDialogNote] = useState<Note | null>(null)
+  const [dialogInitial, setDialogInitial] = useState<NoteDraft | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [noteMenu, setNoteMenu] = useState<{ note: Note | null, x: number, y: number, text: string } | null>(null)
+  const closeNoteMenu = useCallback(() => setNoteMenu(null), [])
 
   const refresh = useCallback(async () => {
     const result = await tiny.api.call('listNotes', {}) as Note[]
@@ -44,6 +49,8 @@ export default function App() {
 
   useEffect(() => tiny.menu.on((id) => {
     if (id === 'about') setAboutOpen(true)
+    // Ctrl+N arrives as a native menu accelerator (WebView2 swallows the key).
+    if (id === 'note:new' && !document.querySelector('dialog[open], .context-menu')) openNewNote()
   }), [])
 
   const sortedNotes = useMemo(() => [...notes].sort((a, b) => {
@@ -115,19 +122,41 @@ export default function App() {
     await refresh()
   }
 
-  async function deleteSelected() {
-    if (selectedId === null) return
-    const note = notes.find((item) => item.id === selectedId)
-    if (!note) return
+  async function deleteNote(note: Note) {
     const confirmed = await tiny.dialog.confirm('Delete this note?', { detail: note.title, ok: 'Delete' })
     if (!confirmed) return
-    await tiny.api.call('deleteNote', { id: selectedId })
-    setSelectedId(null)
+    await tiny.api.call('deleteNote', { id: note.id })
+    setSelectedId((current) => current === note.id ? null : current)
     await refresh()
+  }
+
+  function deleteSelected() {
+    const note = notes.find((item) => item.id === selectedId)
+    if (note) void deleteNote(note)
+  }
+
+  // A right-click on a card selects it; on empty space the menu acts on the
+  // current selection, if any.
+  function openNoteMenu(note: Note | null, x: number, y: number, text: string) {
+    if (note) setSelectedId(note.id)
+    setNoteMenu({ note: note ?? notes.find((item) => item.id === selectedId) ?? null, x, y, text })
+  }
+
+  async function copyNote(note: Note) {
+    await tiny.clipboard.write({ text: noteToText(note) })
+  }
+
+  async function pasteAsNewNote() {
+    const { text } = await tiny.clipboard.read()
+    if (!text?.trim()) return
+    setDialogNote(null)
+    setDialogInitial(textToDraft(text))
+    setDialogOpen(true)
   }
 
   function openNewNote() {
     setDialogNote(null)
+    setDialogInitial(null)
     setDialogOpen(true)
   }
 
@@ -145,33 +174,46 @@ export default function App() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (dialogOpen || aboutOpen) return
+      if (dialogOpen || aboutOpen || noteMenu) return
       const target = event.target as HTMLElement | null
       const typing = target?.matches('input, textarea, select') ?? false
-      if (commandKey(event) && event.key.toLowerCase() === 'f') {
+      const selectedNote = notes.find((item) => item.id === selectedId)
+      const key = event.key.toLowerCase()
+      if (commandKey(event) && key === 'f') {
         event.preventDefault()
         const input = document.getElementById('find-input') as HTMLInputElement | null
         input?.focus()
         input?.select()
-      } else if (event.key === 'Insert' && !typing) {
-        event.preventDefault()
-        openNewNote()
-      } else if (event.key === 'Enter' && !typing && selectedId !== null) {
-        event.preventDefault()
-        const note = notes.find((item) => item.id === selectedId)
-        if (note) openEditNote(note)
-      } else if (event.key === 'Delete' && !typing) {
-        event.preventDefault()
-        void deleteSelected()
       } else if (event.key === 'Escape') {
         event.preventDefault()
         resetFilters()
         document.getElementById('notes-panel')?.focus()
+      } else if (typing || event.altKey) {
+        return
+      } else if (event.key === 'Insert' || (commandKey(event) && !event.shiftKey && key === 'n')) {
+        event.preventDefault()
+        openNewNote()
+      } else if (commandKey(event) && !event.shiftKey && key === 'v') {
+        event.preventDefault()
+        void pasteAsNewNote()
+      } else if (commandKey(event) && !event.shiftKey && key === 'c') {
+        // Selected text copies natively; otherwise the whole selected note.
+        if (!selectedNote || !window.getSelection()?.isCollapsed) return
+        event.preventDefault()
+        void copyNote(selectedNote)
+      } else if ((event.key === 'Enter' || event.key === 'F2') && selectedNote) {
+        event.preventDefault()
+        openEditNote(selectedNote)
+      } else if (event.key === 'Delete') {
+        event.preventDefault()
+        deleteSelected()
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   })
+
+  const menuNote = noteMenu?.note ?? null
 
   return (
     <div className="app">
@@ -190,6 +232,7 @@ export default function App() {
           firstMatchId={firstMatchId}
           onSelect={(note) => setSelectedId((current) => current === note.id ? null : note.id)}
           onEdit={openEditNote}
+          onMenu={openNoteMenu}
         />
       </main>
       <aside className="side">
@@ -203,11 +246,29 @@ export default function App() {
       </aside>
       <NoteDialog
         note={dialogNote}
+        initial={dialogInitial}
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onSave={saveNote}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {noteMenu && (
+        <ContextMenu
+          x={noteMenu.x}
+          y={noteMenu.y}
+          onClose={closeNoteMenu}
+          items={[
+            { label: 'New Note', shortcut: 'Ins or Ctrl+N', onSelect: openNewNote },
+            { label: 'Paste as Note', shortcut: 'Ctrl+V', onSelect: () => void pasteAsNewNote() },
+            { separator: true },
+            ...(noteMenu.text ? [{ label: 'Copy Selection', onSelect: () => void tiny.clipboard.write({ text: noteMenu.text }) }] : []),
+            { label: 'Copy Note', shortcut: 'Ctrl+C', disabled: !menuNote, onSelect: () => menuNote && void copyNote(menuNote) },
+            { label: 'Edit', shortcut: 'F2 or Enter', disabled: !menuNote, onSelect: () => menuNote && openEditNote(menuNote) },
+            { separator: true },
+            { label: 'Delete', shortcut: 'Del', disabled: !menuNote, onSelect: () => menuNote && void deleteNote(menuNote) },
+          ]}
+        />
+      )}
     </div>
   )
 }

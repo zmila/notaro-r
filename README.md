@@ -42,11 +42,19 @@ About popup:
 
 ### Browsing notes
 
-- `Insert`: create a new note.
-- `Enter`: edit the selected note.
+- `Insert` or `Ctrl+N`: create a new note.
+- `Ctrl+V`: open a new note titled `clipboard` with the clipboard text as its body.
+  Review it, then save with `OK`.
+- `Ctrl+C`: copy the selected note (title, blank line, body). With text selected in a note,
+  `Ctrl+C` copies just that text.
+- `Enter` or `F2`: edit the selected note (or double-click the note's header bar).
 - `Delete`: delete the selected note.
 - `Escape`: reset filters when the dialog is closed.
 - `Ctrl+F`: focus and select the Find field.
+- Right-click a note or the empty list: menu with the commands above and their shortcuts
+  (`ArrowUp`/`ArrowDown`, `Enter`, `Escape`); `Copy Selection` is added when text in the note is selected.
+- Note text can be selected with the mouse (drag, double-click a word).
+- `Shift`+right-click: the browser's own menu, for `Inspect` (DevTools are available in `tinyjs dev`; `F12` opens them too).
 
 ### Editing a note
 
@@ -58,9 +66,36 @@ About popup:
 - `ArrowDown` at the bottom of the body: move to the start of the tags.
 - `Ctrl+ArrowUp` in the body: move to the end of the title.
 - `Ctrl+ArrowDown` in the body: move to the start of the tags.
-- `Tab` in the body: insert a tab, or indent selected lines.
-- `Shift+Tab` in the body: outdent selected lines.
+- `Tab` in the body: on a list item, nest it one level deeper (four spaces), taking its
+  sub-items along and the marker style of the items already on that level; elsewhere
+  insert a tab, or indent selected lines.
+- `Shift+Tab` in the body: move a list item one level up (restyled to match that level),
+  or outdent selected lines.
 - `Ctrl+Tab` in the body: toggle Edit/Preview mode.
+- `Enter` in a list item (`-`, `*`, `+`, `1.`, `1)` or `>`): start the next item
+  (numbers count up). `Enter` on an empty nested item moves it one level up; on an empty
+  top-level item it ends the list. `Shift+Enter` inserts a plain line break.
+- Numbered lists renumber themselves when an item is added, removed or moved; only the
+  list being edited changes, and it keeps its starting number. `Ctrl+Z` undoes the
+  renumbering first, then the edit.
+
+### Formatting the note body
+
+The same commands are in the `Format` menu.
+Inline styles wrap the selection; pressing the shortcut again removes the style.
+With no selection they insert an empty pair of markers and put the cursor between them.
+Line styles apply to every line touched by the selection; pressing again removes them.
+`Ctrl+Z` undoes each step.
+
+- `Ctrl+B`: bold, `**text**`.
+- `Ctrl+I`: italic, `*text*`.
+- `Ctrl+U`: underline, `<u>text</u>`.
+- `Ctrl+K`: strikethrough, `~~text~~`.
+- `Ctrl+M`: monospace, `` `text` `` (a fenced code block when the selection spans several lines).
+- `Ctrl+1`, `Ctrl+2`, `Ctrl+3`: heading level 1, 2, 3.
+- `Ctrl+9`: numbered list.
+- `Ctrl+0`: bulleted list.
+- `Ctrl+D`: clear all formatting from the selected lines.
 
 
 ## How to run
@@ -86,3 +121,54 @@ Check manually with
 To release, ask the `Update Changelog` agent (`.github/agents/update-changelog.agent.md`),
 e.g. "update changelog, minor": it adds a new section with the bumped version and today's date
 and updates `tinyjs.json`.
+
+
+
+# h1 example of formatting
+
+1. Lorem **ipsum** *dolor sit* <u>amet</u>, ~~consectetur~~ `adipiscing` ~elit~ \*escape\*
+- code example `inline` or ```triple``` 
+> blockquote
+> multiline
+```
+and code
+several lines
+```
+
+
+## TODO
+
+- [x] main list screen - right mouse click menu - what is it? it is browser menu and has "Back" navigation that goes to blank screen without possibility to return. 
+let's replace it with our custom menu, for beginning with commands "Edit" and "Delete"
+
+- [x] notes in main list has no possibility to select text by mouse: nor click+drag, nor double click do selection. it would be nice to re-enable usual text select and copy operations.
+
+- [x] main screen and preview: markdown should have more visible highlights of blockquote, code and pre (tiny border and background)
+
+- [x] edit notes: lists - think about how to edit and display second and third indent levels, list may be different types when nested (ordered inside unordered), try to reuse Tab and Shift-Tab keys to increase and decrease level of identation
+
+
+- collapsable notes: 
+  -- only header, 5 lines, whole text
+  -- toggle by keyboard (Ctrl minus/plus)
+  -- apply to all notes
+
+
+- find (and replace) while edit notes - new popup
+
+
+- collapsable tags and calendar columns: in Settings menu , in View menu, toggle buttons on main screen (# for tags, calendar emoji or svg for dates  );
+
+- rework of tags: 
+  -- in edit popup - don't show separate input field for tags;
+  -- tags will be - any single word from digits, letters (all: latin, cyrrilic, esperanto, chinese), minus, and underscores;
+  -- list of tags is collected after note finished edit with OK and then sent to backend as it is done now;
+  -- tags in preview and in main list are displayed with blue color as clickable item, on click it selects the related tag in left tags column.
+
+- rework of edit popup:
+  -- don't use popup, but implement editing in place: the selected note became editable block, the title is editable, and the body. the "toolbar" with buttons should go to the top of the editable block. format menu - the same (if possible).
+
+- add Settings menu
+- add View menu
+- add Actions menu
+- implement soft delete (changes in db) and "show deleted", "clear deleted"
