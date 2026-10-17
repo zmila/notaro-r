@@ -2,17 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AboutDialog } from './components/AboutDialog'
 import { CalendarPanel } from './components/CalendarPanel'
 import { ContextMenu } from './components/ContextMenu'
-import { NoteDialog } from './components/NoteDialog'
+import { NoteEditor } from './components/NoteEditor'
 import { NotesPanel, type NotesPanelHandle } from './components/NotesPanel'
 import { Toolbar } from './components/Toolbar'
 import { TagsPanel } from './components/TagsPanel'
 import { noteToText, textToDraft } from './noteClipboard'
+import { revealNoteEditor } from './noteEditorDom'
+import { appendMissingTags, extractTags } from './noteTags'
 import { DEFAULT_NOTE_VIEW, growNoteView, shrinkNoteView, type BulkNoteView, type NoteView } from './noteView'
 import type { Note, NoteDraft, SortDirection, SortField } from './types'
-
-function splitTags(value: string): string[] {
-  return value.split(',').map((tag) => tag.trim()).filter(Boolean)
-}
 
 function sortKey(note: Note, field: SortField): string {
   if (field === 'title') return note.title.trim().toLowerCase()
@@ -39,6 +37,22 @@ function resizeKey(event: KeyboardEvent): 'grow' | 'shrink' | null {
   return null
 }
 
+// Ctrl+key: the index of the note to select, from the selected one's index.
+const NAV_KEYS: Record<string, ((index: number, last: number) => number) | undefined> = {
+  ArrowUp: (index) => index - 1,
+  ArrowDown: (index) => index + 1,
+  PageUp: (index) => index - 10,
+  PageDown: (index) => index + 10,
+  Home: () => 0,
+  End: (_index, last) => last,
+}
+
+interface EditSession {
+  note: Note | null
+  initial: NoteDraft
+  key: number
+}
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -48,9 +62,11 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
   const [sortField, setSortField] = useState<SortField>('updated')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [dialogNote, setDialogNote] = useState<Note | null>(null)
-  const [dialogInitial, setDialogInitial] = useState<NoteDraft | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
+  // The one note being edited in place (note null: a new note), if any.
+  const [editing, setEditing] = useState<EditSession | null>(null)
+  const editingRef = useRef<EditSession | null>(null)
+  const editDirty = useRef(false)
+  const editKey = useRef(0)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [noteMenu, setNoteMenu] = useState<{ note: Note | null, x: number, y: number, text: string } | null>(null)
   const closeNoteMenu = useCallback(() => setNoteMenu(null), [])
@@ -118,16 +134,6 @@ export default function App() {
     void refresh()
   }, [refresh])
 
-  useEffect(() => tiny.menu.on((id) => {
-    if (id === 'about') setAboutOpen(true)
-    // Ctrl+N arrives as a native menu accelerator (WebView2 swallows the key).
-    if (id === 'note:new' && !document.querySelector('dialog[open], .context-menu')) openNewNote()
-    if (id === 'view:tags') toggleColumn('tags', 'menu')
-    if (id === 'view:calendar') toggleColumn('calendar', 'menu')
-    const resize = MENU_RESIZE[id]
-    if (resize && !document.querySelector('dialog[open], .context-menu')) resizeNotes(resize, 'menu')
-  }), [toggleColumn, resizeNotes])
-
   const sortedNotes = useMemo(() => [...notes].sort((a, b) => {
     const order = sortDirection === 'asc' ? 1 : -1
     return sortKey(a, sortField).localeCompare(sortKey(b, sortField)) * order
@@ -186,23 +192,103 @@ export default function App() {
     return terms.some((term) => haystack.includes(term))
   })?.id ?? null
 
-  async function saveNote(draft: NoteDraft) {
-    const payload = { title: draft.title, body: draft.body, tags: splitTags(draft.tags) }
-    if (dialogNote) {
-      await tiny.api.call('updateNote', { id: dialogNote.id, ...payload })
+  // Bumped to scroll the selected note into view (NotesPanel, once rendered).
+  const [revealGen, setRevealGen] = useState(0)
+  const revealSelected = useCallback(() => setRevealGen((gen) => gen + 1), [])
+
+  // A filter change keeps the selected note if it is still listed, otherwise
+  // selects the top one; a sort change keeps it too. Either way it is scrolled
+  // into view. Adjusted during render, so the new list never shows a stale pick.
+  const filterKey = `${search}\n${selectedTag}\n${selectedMonth ?? ''}`
+  const orderKey = `${sortField} ${sortDirection}`
+  const [listKeys, setListKeys] = useState({ filterKey, orderKey })
+  if (listKeys.filterKey !== filterKey || listKeys.orderKey !== orderKey) {
+    setListKeys({ filterKey, orderKey })
+    if (listKeys.filterKey !== filterKey && !visibleNotes.some((note) => note.id === selectedId)) {
+      setSelectedId(visibleNotes[0]?.id ?? null)
+    }
+    setRevealGen((gen) => gen + 1)
+  }
+
+  // Ctrl+Up/Down (±1), Ctrl+PgUp/PgDn (±10), Ctrl+Home/End: move the selection
+  // within the listed notes; with nothing selected, start from the top note.
+  function moveSelection(target: (index: number, last: number) => number) {
+    if (visibleNotes.length === 0) return
+    const current = visibleNotes.findIndex((note) => note.id === selectedId)
+    const last = visibleNotes.length - 1
+    const index = current < 0 ? 0 : Math.max(0, Math.min(last, target(current, last)))
+    setSelectedId(visibleNotes[index].id)
+    revealSelected()
+  }
+
+  const startEditing = useCallback((note: Note | null, initial: NoteDraft) => {
+    editKey.current += 1
+    const session = { note, initial, key: editKey.current }
+    editingRef.current = session
+    editDirty.current = false
+    setEditing(session)
+    if (note) setSelectedId(note.id)
+  }, [])
+
+  const closeEditor = useCallback(() => {
+    editingRef.current = null
+    editDirty.current = false
+    setEditing(null)
+  }, [])
+
+  const onEditorDirty = useCallback((dirty: boolean) => {
+    editDirty.current = dirty
+  }, [])
+
+  // Before an action that changes which notes are shown or edited: an open
+  // editor closes — after a confirmation if it has unsaved changes.
+  const leaveEditor = useCallback(async (): Promise<boolean> => {
+    if (!editingRef.current) return true
+    if (editDirty.current) {
+      const discard = await tiny.dialog.confirm('Discard unsaved changes?', {
+        detail: 'The note you are editing has changes that are not saved.',
+        ok: 'Discard',
+        cancel: 'Keep editing',
+      })
+      if (!discard) {
+        revealNoteEditor()
+        return false
+      }
+    }
+    closeEditor()
+    return true
+  }, [closeEditor])
+
+  const guarded = useCallback((action: () => void) => {
+    void leaveEditor().then((ok) => { if (ok) action() })
+  }, [leaveEditor])
+
+  async function saveNote(note: Note | null, draft: NoteDraft) {
+    // Tags are the `#words` of the body, collected once the note is saved.
+    const payload = { title: draft.title, body: draft.body, tags: extractTags(draft.body) }
+    if (note) {
+      await tiny.api.call('updateNote', { id: note.id, ...payload })
     } else {
       const created = await tiny.api.call('addNote', payload) as Note
       setSelectedId(created.id)
     }
     await refresh()
+    closeEditor()
+    revealSelected()
   }
 
   async function deleteNote(note: Note) {
+    if (!await leaveEditor()) return
     const confirmed = await tiny.dialog.confirm('Delete this note?', { detail: note.title, ok: 'Delete' })
     if (!confirmed) return
+    // The selection moves to the next listed note, or the previous one at the end.
+    const index = visibleNotes.findIndex((item) => item.id === note.id)
+    const neighbor = index < 0 ? null : (visibleNotes[index + 1] ?? visibleNotes[index - 1] ?? null)
     await tiny.api.call('deleteNote', { id: note.id })
-    setSelectedId((current) => current === note.id ? null : current)
     await refresh()
+    setSelectedId((current) => current === note.id ? neighbor?.id ?? null : current)
+    revealSelected()
+    document.getElementById('notes-panel')?.focus({ preventScroll: true })
   }
 
   function deleteSelected() {
@@ -222,22 +308,33 @@ export default function App() {
   }
 
   async function pasteAsNewNote() {
+    if (!await leaveEditor()) return
     const { text } = await tiny.clipboard.read()
     if (!text?.trim()) return
-    setDialogNote(null)
-    setDialogInitial(textToDraft(text))
-    setDialogOpen(true)
+    startEditing(null, textToDraft(text))
   }
 
-  function openNewNote() {
-    setDialogNote(null)
-    setDialogInitial(null)
-    setDialogOpen(true)
-  }
+  const openNewNote = useCallback(() => {
+    guarded(() => startEditing(null, { title: '', body: '' }))
+  }, [guarded, startEditing])
+
+  useEffect(() => tiny.menu.on((id) => {
+    if (id === 'about') setAboutOpen(true)
+    // Ctrl+N arrives as a native menu accelerator (WebView2 swallows the key).
+    if (id === 'note:new' && !document.querySelector('dialog[open], .context-menu')) openNewNote()
+    if (id === 'view:tags') toggleColumn('tags', 'menu')
+    if (id === 'view:calendar') toggleColumn('calendar', 'menu')
+    const resize = MENU_RESIZE[id]
+    if (resize && !document.querySelector('dialog[open], .context-menu')) resizeNotes(resize, 'menu')
+  }), [toggleColumn, resizeNotes, openNewNote])
 
   function openEditNote(note: Note) {
-    setDialogNote(note)
-    setDialogOpen(true)
+    if (editingRef.current?.note?.id === note.id) {
+      revealNoteEditor()
+      return
+    }
+    // Tags kept apart by older versions join the body, where tags live now.
+    guarded(() => startEditing(note, { title: note.title, body: appendMissingTags(note.body, note.tags) }))
   }
 
   function resetFilters() {
@@ -247,13 +344,19 @@ export default function App() {
     setSelectedMonth(null)
   }
 
+  const filtered = search !== '' || selectedTag !== 'all' || selectedMonth !== null
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (dialogOpen || aboutOpen || noteMenu) return
+      if (aboutOpen || noteMenu) return
       const target = event.target as HTMLElement | null
       const typing = target?.matches('input, textarea, select') ?? false
+      // The editor handles its own keys (Esc, Ctrl+Enter, formatting); only
+      // the view shortcuts and Find below work from inside it.
+      const inEditor = target?.closest('.note-editor') != null
       const selectedNote = notes.find((item) => item.id === selectedId)
       const key = event.key.toLowerCase()
+      const nav = commandKey(event) ? NAV_KEYS[event.key] : undefined
       if (commandKey(event) && key === 'f') {
         event.preventDefault()
         const input = document.getElementById('find-input') as HTMLInputElement | null
@@ -267,10 +370,22 @@ export default function App() {
         event.preventDefault()
         const grow = resizeKey(event) === 'grow'
         if (!event.repeat) resizeNotes(event.shiftKey ? (grow ? 'all-grow' : 'all-shrink') : (grow ? 'note-grow' : 'note-shrink'), 'key')
+      } else if (inEditor) {
+        return
+      } else if (nav && !event.shiftKey && !event.altKey
+        // The Find field keeps Ctrl+Home/End for its text cursor.
+        && (!typing || (target?.id === 'find-input' && event.key !== 'Home' && event.key !== 'End'))) {
+        event.preventDefault()
+        moveSelection(nav)
       } else if (event.key === 'Escape') {
         event.preventDefault()
-        resetFilters()
-        document.getElementById('notes-panel')?.focus()
+        if (filtered) {
+          guarded(resetFilters)
+        } else {
+          if (!visibleNotes.some((note) => note.id === selectedId)) setSelectedId(visibleNotes[0]?.id ?? null)
+          revealSelected()
+        }
+        document.getElementById('notes-panel')?.focus({ preventScroll: true })
       } else if (typing || event.altKey) {
         return
       } else if (event.key === 'Insert' || (commandKey(event) && !event.shiftKey && key === 'n')) {
@@ -308,10 +423,20 @@ export default function App() {
         onToggleTags={() => toggleColumn('tags', 'click')}
         onToggleCalendar={() => toggleColumn('calendar', 'click')}
         onNewNote={openNewNote}
+        editing={editing !== null}
+        canEdit={editing !== null || visibleNotes.some((note) => note.id === selectedId)}
+        onEditButton={() => {
+          if (editingRef.current) {
+            revealNoteEditor()
+            return
+          }
+          const note = visibleNotes.find((item) => item.id === selectedId)
+          if (note) openEditNote(note)
+        }}
         notesView={bulkView.view}
         onNotesViewChange={applyBulkView}
         onSearchChange={setSearchInput}
-        onSearch={() => setSearch(searchInput)}
+        onSearch={() => { if (searchInput !== search) guarded(() => setSearch(searchInput)) }}
         sort={{
           field: sortField,
           direction: sortDirection,
@@ -320,33 +445,44 @@ export default function App() {
         }}
       />
       <div className="columns">
-        {tagsVisible && <TagsPanel tags={tags} selected={selectedTag} onSelect={setSelectedTag} />}
+        {tagsVisible && <TagsPanel tags={tags} selected={selectedTag} onSelect={(tag) => { if (tag !== selectedTag) guarded(() => setSelectedTag(tag)) }} />}
         <main className="main">
           <NotesPanel
             ref={notesPanel}
             notes={visibleNotes}
             terms={terms}
             selectedId={selectedId}
+            revealGen={revealGen}
             firstMatchId={firstMatchId}
             bulkView={bulkView}
             onSelect={(note) => setSelectedId((current) => current === note.id ? null : note.id)}
             onEdit={openEditNote}
             onMenu={openNoteMenu}
+            onTag={(note, tag) => {
+              // The note's stored spelling, as listed in the tags column.
+              const lower = tag.toLocaleLowerCase()
+              const name = note.tags.find((item) => item.toLocaleLowerCase() === lower) ?? tag
+              if (name !== selectedTag) guarded(() => setSelectedTag(name))
+            }}
+            editingId={editing?.note?.id ?? null}
+            editor={editing && (
+              <NoteEditor
+                key={editing.key}
+                note={editing.note}
+                initial={editing.initial}
+                onSave={(draft) => saveNote(editing.note, draft)}
+                onCancel={closeEditor}
+                onDirtyChange={onEditorDirty}
+              />
+            )}
           />
         </main>
         {calendarVisible && (
           <aside className="side">
-            <CalendarPanel groups={calendarGroups} selected={selectedMonth} onSelect={setSelectedMonth} />
+            <CalendarPanel groups={calendarGroups} selected={selectedMonth} onSelect={(month) => guarded(() => setSelectedMonth(month))} />
           </aside>
         )}
       </div>
-      <NoteDialog
-        note={dialogNote}
-        initial={dialogInitial}
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSave={saveNote}
-      />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       {noteMenu && (
         <ContextMenu

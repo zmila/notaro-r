@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { MarkdownContent } from './MarkdownContent'
 import {
   formatCommands,
@@ -10,16 +10,17 @@ import {
 import { continueList, indentLines, renumberLists } from '../markdownLists'
 import type { Note, NoteDraft } from '../types'
 
-interface NoteDialogProps {
+interface NoteEditorProps {
+  /** the edited note; null for a new one */
   note: Note | null
-  /** pre-filled content for a new note (e.g. pasted from the clipboard) */
-  initial?: NoteDraft | null
-  open: boolean
-  onClose: () => void
+  /** the draft at open time; the editor is dirty while it differs from it */
+  initial: NoteDraft
   onSave: (draft: NoteDraft) => Promise<void>
+  onCancel: () => void
+  onDirtyChange: (dirty: boolean) => void
 }
 
-const emptyDraft: NoteDraft = { title: '', body: '', tags: '' }
+const MIN_BODY_HEIGHT = 120
 
 function applyEdit(body: HTMLTextAreaElement, edit: FormatEdit) {
   body.setSelectionRange(edit.from, edit.to)
@@ -35,17 +36,37 @@ function applyFormatEdit(body: HTMLTextAreaElement, format: FormatCommand) {
   applyEdit(body, formatMarkdown(body.value, body.selectionStart, body.selectionEnd, format))
 }
 
-export function NoteDialog({ note, initial, open, onClose, onSave }: NoteDialogProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+// The note card in edit mode: a toolbar on top, then the title and the body
+// sharing one border. The body's bottom-right corner resizes it.
+export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: NoteEditorProps) {
+  const cardRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
-  const tagsRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const focusBodyAfterToggle = useRef(false)
   const lastFormat = useRef({ format: '', time: 0 })
   const renumbering = useRef(false)
-  const [draft, setDraft] = useState<NoteDraft>(emptyDraft)
+  const saving = useRef(false)
+  const [draft, setDraft] = useState<NoteDraft>(initial)
   const [preview, setPreview] = useState(false)
+  // Shared by the body and the preview, so switching keeps the size.
+  const [height, setHeight] = useState<number | undefined>(undefined)
+  const dirty = draft.title !== initial.title || draft.body !== initial.body
+
+  useEffect(() => {
+    onDirtyChange(dirty)
+  }, [dirty, onDirtyChange])
+
+  // Fit the body to its text at first (within limits), show the card, focus the title.
+  useLayoutEffect(() => {
+    const body = bodyRef.current
+    if (body) {
+      const max = Math.max(MIN_BODY_HEIGHT, Math.round(window.innerHeight * 0.6))
+      setHeight(Math.min(max, Math.max(MIN_BODY_HEIGHT, body.scrollHeight + 2)))
+    }
+    cardRef.current?.scrollIntoView({ block: 'nearest' })
+    titleRef.current?.focus({ preventScroll: true })
+  }, [])
 
   // The Format menu's accelerators reach us here; the keydown path below
   // covers the same keys when the page gets them first.
@@ -66,27 +87,24 @@ export function NoteDialog({ note, initial, open, onClose, onSave }: NoteDialogP
     else bodyRef.current?.focus()
   }, [preview])
 
-  useEffect(() => {
-    if (!open) return
-    setDraft(note ? { title: note.title, body: note.body, tags: note.tags.join(', ') } : initial ?? emptyDraft)
-    setPreview(false)
-    const dialog = dialogRef.current
-    if (dialog && !dialog.open) dialog.showModal()
-    titleRef.current?.focus()
-  }, [initial, note, open])
-
-  function close() {
-    dialogRef.current?.close()
-    onClose()
-  }
-
   async function save() {
-    if (!draft.title.trim() && !draft.body.trim()) return
-    await onSave(draft)
-    close()
+    if (saving.current) return
+    if (!draft.title.trim() && !draft.body.trim()) {
+      if (!note) onCancel()
+      return
+    }
+    saving.current = true
+    try {
+      await onSave(draft)
+    } finally {
+      saving.current = false
+    }
   }
 
   function switchMode(value: boolean) {
+    if (value === preview) return
+    const current = preview ? previewRef.current : bodyRef.current
+    if (current) setHeight(current.offsetHeight)
     focusBodyAfterToggle.current = true
     setPreview(value)
   }
@@ -108,15 +126,13 @@ export function NoteDialog({ note, initial, open, onClose, onSave }: NoteDialogP
     title?.setSelectionRange(title.value.length, title.value.length)
   }
 
-  function focusTagsStart() {
-    const tags = tagsRef.current
-    tags?.focus()
-    tags?.setSelectionRange(0, 0)
-  }
-
-  function formKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+  function cardKeyDown(event: KeyboardEvent<HTMLElement>) {
     const command = event.ctrlKey || event.metaKey
-    if (event.key === 'Enter' && command) {
+    if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+      event.preventDefault()
+      event.stopPropagation()
+      onCancel()
+    } else if (event.key === 'Enter' && command) {
       event.preventDefault()
       void save()
     } else if (event.key === 'Tab' && command) {
@@ -169,7 +185,7 @@ export function NoteDialog({ note, initial, open, onClose, onSave }: NoteDialogP
   function bodyKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const command = event.ctrlKey || event.metaKey
     const body = event.currentTarget
-    // Ctrl+Tab bubbles up to the form handler.
+    // Ctrl+Tab bubbles up to the card handler.
     if (event.key === 'Tab' && command) return
     const format = command && !event.shiftKey && !event.altKey ? formatShortcuts[event.key.toLowerCase()] : undefined
     if (format) {
@@ -188,72 +204,67 @@ export function NoteDialog({ note, initial, open, onClose, onSave }: NoteDialogP
       && (command || !body.value.slice(0, body.selectionStart).includes('\n'))) {
       event.preventDefault()
       focusTitleEnd()
-    } else if (event.key === 'ArrowDown' && !event.shiftKey
-      && (command || !body.value.slice(body.selectionEnd).includes('\n'))) {
-      event.preventDefault()
-      focusTagsStart()
     }
   }
 
   return (
-    <dialog ref={dialogRef} className="dialog" onCancel={(event) => { event.preventDefault(); close() }}>
-      <form className="dialog-form" onKeyDown={formKeyDown} onSubmit={(event) => { event.preventDefault(); void save() }}>
-        <div className="dialog-head">{note ? `(Edit Note ${note.id})` : '(New Note)'}</div>
-        <input
-          ref={titleRef}
-          className="dialog-title"
-          value={draft.title}
-          placeholder="new note title"
-          onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-          onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') {
-              event.preventDefault()
-              focusBody(false)
-            }
-          }}
-        />
-        {preview ? (
-          <MarkdownContent
-            ref={previewRef}
-            value={draft.body}
-            className="dialog-body-preview"
-            tabIndex={0}
-          />
-        ) : (
-          <textarea
-            ref={bodyRef}
-            className="dialog-body"
-            value={draft.body}
-            placeholder="note text..."
-            onChange={bodyChange}
-            onKeyDown={bodyKeyDown}
-          />
-        )}
-        <input
-          id="note-tags"
-          ref={tagsRef}
-          className="dialog-tags"
-          value={draft.tags}
-          placeholder="tags, comma separated"
-          onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
-          onKeyDown={(event) => {
-            if (event.key === 'ArrowUp') {
-              event.preventDefault()
-              focusBody(true)
-            }
-          }}
-        />
-        <div className="dialog-buttons">
-          <div className="body-mode">
-            <button type="button" className={`head-btn mode-button${!preview ? ' active' : ''}`} onClick={() => switchMode(false)}>Edit</button>
-            <button type="button" className={`head-btn mode-button${preview ? ' active' : ''}`} onClick={() => switchMode(true)}>Preview</button>
-          </div>
-          <div className="dialog-actions">
-            <button type="submit" className="head-btn dialog-btn">OK</button>
-            <button type="button" className="head-btn dialog-btn" onClick={close}>Cancel</button>
-          </div>
+    <article
+      ref={cardRef}
+      className="note note-editor editing"
+      data-note-id={note?.id}
+      onKeyDown={cardKeyDown}
+      onContextMenu={(event) => {
+        // Text fields keep the native menu (cut/copy/paste); no note menu here.
+        event.stopPropagation()
+        if (!(event.target as Element).closest('input, textarea')) event.preventDefault()
+      }}
+    >
+      <div className="editor-bar">
+        <div className="body-mode">
+          <button type="button" className={`head-btn editor-btn mode-button${!preview ? ' active' : ''}`} title="Edit (Ctrl+Tab)" onClick={() => switchMode(false)}>Edit</button>
+          <button type="button" className={`head-btn editor-btn mode-button${preview ? ' active' : ''}`} title="Preview (Ctrl+Tab)" onClick={() => switchMode(true)}>Preview</button>
         </div>
-      </form>
-    </dialog>
+        <span className="editor-label">{note ? `Note ${note.id}` : 'New note'}{dirty ? ' •' : ''}</span>
+        <div className="editor-actions">
+          <button type="button" className="head-btn editor-btn editor-ok" title="Save (Ctrl+Enter)" onClick={() => void save()}>OK</button>
+          <button type="button" className="head-btn editor-btn" title="Cancel (Esc)" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+      <input
+        ref={titleRef}
+        className="editor-title"
+        value={draft.title}
+        placeholder="note title"
+        onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault()
+            focusBody(false)
+          } else if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            event.preventDefault()
+            void save()
+          }
+        }}
+      />
+      {preview ? (
+        <MarkdownContent
+          ref={previewRef}
+          value={draft.body}
+          className="editor-preview"
+          tabIndex={0}
+          style={{ height }}
+        />
+      ) : (
+        <textarea
+          ref={bodyRef}
+          className="editor-body"
+          value={draft.body}
+          placeholder="note text… (#tags anywhere)"
+          style={{ height }}
+          onChange={bodyChange}
+          onKeyDown={bodyKeyDown}
+        />
+      )}
+    </article>
   )
 }

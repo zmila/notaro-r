@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 interface TagItem {
   name: string
   count: number
@@ -10,9 +12,15 @@ interface TagsPanelProps {
 }
 
 export function TagsPanel({ tags, selected, onSelect }: TagsPanelProps) {
+  const listRef = useRef<HTMLUListElement>(null)
+  // A tag picked from a note may be far down the list.
+  useEffect(() => {
+    listRef.current?.querySelector('.tag-label.selected')?.scrollIntoView({ block: 'nearest' })
+  }, [selected])
+
   return (
     <aside className="tags">
-      <ul className="tag-list">
+      <ul ref={listRef} className="tag-list">
         {tags.map((tag) => (
           <li className="tag" key={tag.name}>
             <button

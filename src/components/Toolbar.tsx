@@ -12,6 +12,9 @@ interface ToolbarProps {
   onToggleTags: () => void
   onToggleCalendar: () => void
   onNewNote: () => void
+  editing: boolean
+  canEdit: boolean
+  onEditButton: () => void
   notesView: NoteView
   onNotesViewChange: (view: NoteView) => void
   onSearchChange: (value: string) => void
@@ -29,6 +32,15 @@ function CalendarIcon() {
   )
 }
 
+function PencilIcon() {
+  return (
+    <svg className="btn-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path d="M11.2 1.8l3 3L5.5 13.5 1.6 14.4l.9-3.9z" fill="none" stroke="currentColor" strokeLinejoin="round" />
+      <path d="M9.5 3.5l3 3M2.5 10.5l3 3" stroke="currentColor" fill="none" />
+    </svg>
+  )
+}
+
 export function Toolbar({
   search,
   visibleCount,
@@ -37,6 +49,9 @@ export function Toolbar({
   onToggleTags,
   onToggleCalendar,
   onNewNote,
+  editing,
+  canEdit,
+  onEditButton,
   notesView,
   onNotesViewChange,
   onSearchChange,
@@ -58,6 +73,14 @@ export function Toolbar({
           aria-label="New note"
           onClick={onNewNote}
         >N+</button>
+        <button
+          type="button"
+          className="head-btn toggle-btn reveal-editor"
+          title={editing ? 'Go to the note being edited' : canEdit ? 'Edit the selected note (F2 or Enter)' : 'No note is selected'}
+          aria-label={editing ? 'Go to the note being edited' : 'Edit the selected note'}
+          disabled={!canEdit}
+          onClick={onEditButton}
+        ><PencilIcon /></button>
       </div>
       <div className="toolbar-middle">
         <label className="find-label" htmlFor="find-input">Find:</label>

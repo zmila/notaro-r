@@ -13,5 +13,4 @@ export type SortDirection = 'asc' | 'desc'
 export interface NoteDraft {
   title: string
   body: string
-  tags: string
 }

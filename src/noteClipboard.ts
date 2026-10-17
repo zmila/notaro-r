@@ -9,5 +9,5 @@ export function noteToText(note: Note): string {
 
 // A pasted note keeps the clipboard text whole in the body under a fixed title.
 export function textToDraft(text: string): NoteDraft {
-  return { title: 'clipboard', body: text.replace(/\r\n?/g, '\n').trim(), tags: '' }
+  return { title: 'clipboard', body: text.replace(/\r\n?/g, '\n').trim() }
 }

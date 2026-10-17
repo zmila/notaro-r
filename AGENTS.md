@@ -10,8 +10,8 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   SQLite in `notes.db` at the app root. Sibling `../notaro-h` is the earlier plain-HTML version.
 - `notes.db` is the user's data: never commit it (it is untracked on purpose).
 - Production DB has ~1800 notes; design for a few thousand.
-- Lint baseline: `npx oxlint src` reports two pre-existing `react(set-state-in-effect)`
-  warnings (`NoteDialog.tsx`, `App.tsx`). Anything beyond those is new.
+- Lint baseline: `npx oxlint src` reports one pre-existing `react(set-state-in-effect)`
+  warning (`App.tsx`). Anything beyond it is new.
 - Validate frontend changes with `npm run build` (runs the version check, `tsc -b`, `vite build`).
 
 ## Versioning and releases
@@ -55,7 +55,7 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   in a textarea `Ctrl+B/I/U/K/D` never fire `keydown` (Ctrl+M and Ctrl+digits do). Don't enable
   `browserAccelerators` (brings back Ctrl+R reload / Ctrl+P print); bind such keys as native menu
   accelerators (`{ id, label, key: 'b' }`) and handle the id in `tiny.menu.on` — see the Format
-  menu in `backend/main.ts` and `NoteDialog.tsx` (keeps a keydown path too, deduped by time).
+  menu in `backend/main.ts` and `NoteEditor.tsx` (keeps a keydown path too, deduped by time).
   Playwright tests can't reveal this — they run in plain Chromium.
 - Right-click: the default WebView2 menu has Back/Reload, which leave the app on a blank page.
   `tiny.menu.setContext(items)` replaces it with one app-wide native menu (no per-element
@@ -98,14 +98,42 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   `event.code` (`Equal`/`Minus`/numpad), shares the menu/keydown dedupe (`acceptShortcut`) and
   `preventDefault`s to block browser zoom. The selected note is changed through
   `NotesPanelHandle.stepSelected` (React 19 `ref` prop + `useImperativeHandle`).
+- Tags (`src/noteTags.ts`): the source of truth is `#word` text in the body. `extractTags` runs
+  on save (`App.saveNote`) and its result is sent as `tags` to the unchanged backend API; code
+  spans/fences and `](#anchor)` link targets are skipped. `linkTagsHtml` wraps tags in
+  `<span class="note-tag" data-tag>` inside `markdownHtml` (after DOMPurify, so it is cached);
+  a click on one in a card calls `onTag`. DB rows from before keep tags only in the `tags`
+  column; `App.openEditNote` appends them via `appendMissingTags` when such a note is opened.
+- In-place editing (`NoteEditor.tsx`): App holds one `EditSession` (`note` null = new note, the
+  `initial` draft, a `key` that remounts the editor). The draft lives in the editor; it reports
+  only dirty flips (`onDirtyChange` → `editDirty` ref), so typing never re-renders App.
+  `NotesPanel` renders the passed `editor` in place of the edited note's card, or on top
+  for a new note. Actions that change which notes are shown or edited go through
+  `guarded`/`leaveEditor` (confirm `Discard unsaved changes?` when dirty, then close);
+  view toggles, sort, copy and clicks in other cards don't. The global keydown ignores events
+  from inside `.note-editor` except Ctrl+F and the view shortcuts; the editor handles Esc,
+  Ctrl+Enter, Ctrl+Tab and formatting itself. The toolbar pencil button edits the selected
+  listed note (disabled with none), or, while editing, calls `revealNoteEditor`
+  (`noteEditorDom.ts`) to scroll to the editor.
+- Selection and scrolling: App bumps `revealGen` to have `NotesPanel` scroll the selected card
+  (`[data-note-id]`) into view with `block: 'nearest'` (`.notes` has `scroll-padding`). Filter and
+  sort changes are detected *during render* (`listKeys` state, React's "adjust state on prop
+  change" pattern), so the filtered list never renders with a stale selection. `NotesPanel`
+  mounts at least up to the selected index, so Ctrl+End works before the progressive mount ends.
+  Ctrl+arrow/Home/End/PgUp/PgDn are page keydown only — as menu accelerators they would steal
+  the same keys from text fields.
+- The Playwright test page is "not visible": `requestAnimationFrame` never fires, so the
+  progressive mount stays at 20 notes there. Test with ≤ 20 listed notes (or a filter).
+- Test stubs: `tiny.menu.on` must return a real unsubscribe — React StrictMode mounts
+  effects twice, and a no-op unsubscribe applies each Format command twice (bold toggles back).
 - Modal `<dialog>` (`showModal()`):
   - it focuses the first focusable element (e.g. a link), and neither React's `autoFocus`
     nor `focus()` right after `showModal()` overrode that in testing; set the native
     `autofocus` attribute on the intended element *before* `showModal()`.
-  - in the Playwright test browser Escape did not fire `cancel` (also for `NoteDialog`);
+  - in the Playwright test browser Escape did not fire `cancel`;
     `AboutDialog` handles Escape in `onKeyDown` as well. Unverified in WebView2.
   - the global keydown handler in `App.tsx` must return early while any modal is open
-    (`dialogOpen || aboutOpen`), otherwise Enter/Escape also act on the main window.
+    (`aboutOpen`), otherwise Enter/Escape also act on the main window.
 - Markdown in docs: a line of `===` is not a divider (it makes the line above a heading);
   use `---` with blank lines around it.
 - Body edits go through `execCommand('insertText')` (fallback `setRangeText`) so native

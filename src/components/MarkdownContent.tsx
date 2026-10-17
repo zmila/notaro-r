@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from 'react'
+import { forwardRef, useMemo, type CSSProperties } from 'react'
 import { highlightHtml, markdownHtml } from '../markdown'
 
 interface MarkdownContentProps {
@@ -6,10 +6,11 @@ interface MarkdownContentProps {
   terms?: string[]
   className?: string
   tabIndex?: number
+  style?: CSSProperties
 }
 
 export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(function MarkdownContent(
-  { value, terms = [], className, tabIndex },
+  { value, terms = [], className, tabIndex, style },
   ref,
 ) {
   const html = useMemo(() => {
@@ -17,5 +18,5 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
     return terms.length > 0 ? highlightHtml(rendered, terms) : rendered
   }, [terms, value])
 
-  return <div ref={ref} className={className} tabIndex={tabIndex} dangerouslySetInnerHTML={{ __html: html }} />
+  return <div ref={ref} className={className} tabIndex={tabIndex} style={style} dangerouslySetInnerHTML={{ __html: html }} />
 })

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react'
+import { Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import { MarkdownContent } from './MarkdownContent'
 import { noteViewInfo, stepNoteView, type BulkNoteView, type NoteView } from '../noteView'
 import type { Note } from '../types'
@@ -8,6 +8,7 @@ interface NoteHandlers {
   onEdit: (note: Note) => void
   onMenu: (note: Note | null, x: number, y: number, text: string) => void
   onViewChange: (note: Note, view: NoteView) => void
+  onTag: (note: Note, tag: string) => void
 }
 
 interface NoteCardProps {
@@ -51,7 +52,13 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
   return (
     <article
       className={`note view-${view}${selected ? ' selected' : ''}`}
+      data-note-id={note.id}
       onClick={(event) => {
+        const tag = (event.target as Element).closest<HTMLElement>('.note-tag')?.dataset.tag
+        if (tag && selectedText(event.currentTarget) === '') {
+          handlers.onTag(note, tag)
+          return
+        }
         // A drag-selection, a word double-click or a click in an already
         // selected card's text is about the text, not about the card.
         const inText = (event.target as Element).closest('.note-text') !== null
@@ -103,9 +110,15 @@ interface NotesPanelProps {
   selectedId: number | null
   firstMatchId: number | null
   bulkView: BulkNoteView
+  /** bumped to scroll the selected note into view */
+  revealGen?: number
   onSelect: (note: Note) => void
   onEdit: (note: Note) => void
   onMenu: (note: Note | null, x: number, y: number, text: string) => void
+  onTag: (note: Note, tag: string) => void
+  /** the open note editor, shown in place of its note's card (on top for a new note) */
+  editor?: ReactNode
+  editingId?: number | null
 }
 
 const INITIAL_NOTE_COUNT = 20
@@ -142,17 +155,20 @@ interface ViewOverride {
   gen: number
 }
 
-export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkView, onSelect, onEdit, onMenu }: NotesPanelProps) {
-  const mountLimit = useProgressiveLimit(notes.length, 0)
+export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkView, revealGen = 0, onSelect, onEdit, onMenu, onTag, editor, editingId = null }: NotesPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const selectedIndex = notes.findIndex((note) => note.id === selectedId)
+  // A keyboard jump (Ctrl+End) may select a note the progressive mount hasn't reached yet.
+  const mountLimit = Math.max(useProgressiveLimit(notes.length, 0), selectedIndex + 1)
   // Bulk view changes reach the top cards first, then the rest batch by batch.
   const applyLimit = useProgressiveLimit(notes.length, bulkView.gen)
   // Per-note choices, in memory only (never saved), tagged with the bulk press
   // they were made after; a newer press overrides them as it reaches each card.
   const [overrides, setOverrides] = useState<ReadonlyMap<number, ViewOverride>>(() => new Map())
 
-  const latest = useRef({ onSelect, onEdit, onMenu, gen: bulkView.gen })
+  const latest = useRef({ onSelect, onEdit, onMenu, onTag, gen: bulkView.gen })
   useLayoutEffect(() => {
-    latest.current = { onSelect, onEdit, onMenu, gen: bulkView.gen }
+    latest.current = { onSelect, onEdit, onMenu, onTag, gen: bulkView.gen }
   })
 
   const onViewChange = useCallback((note: Note, view: NoteView) => {
@@ -170,6 +186,7 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
     onSelect: (note) => latest.current.onSelect(note),
     onEdit: (note) => latest.current.onEdit(note),
     onMenu: (note, x, y, text) => latest.current.onMenu(note, x, y, text),
+    onTag: (note, tag) => latest.current.onTag(note, tag),
     onViewChange,
   }))
 
@@ -179,6 +196,18 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
     if (index < applyLimit) return bulkView.view
     return own && own.gen === bulkView.gen - 1 ? own.view : bulkView.prev
   }
+
+  const editorInList = editingId !== null && notes.slice(0, mountLimit).some((note) => note.id === editingId)
+
+  // Scroll the selected note just into view: at the bottom when it was below,
+  // at the top when above (the panel's scroll-padding keeps the gap).
+  const revealed = useRef(revealGen)
+  useLayoutEffect(() => {
+    if (revealed.current === revealGen) return
+    revealed.current = revealGen
+    if (selectedId === null) return
+    panelRef.current?.querySelector(`[data-note-id="${selectedId}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [revealGen, selectedId])
 
   useImperativeHandle(ref, () => ({
     stepSelected: (step) => {
@@ -190,6 +219,7 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
 
   return (
     <div
+      ref={panelRef}
       id="notes-panel"
       className="notes"
       tabIndex={-1}
@@ -200,7 +230,10 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
         onMenu(null, event.clientX, event.clientY, '')
       }}
     >
-      {notes.slice(0, mountLimit).map((note, index) => (
+      {editor && !editorInList && editor}
+      {notes.slice(0, mountLimit).map((note, index) => editor && note.id === editingId ? (
+        <Fragment key={note.id}>{editor}</Fragment>
+      ) : (
         <NoteCard
           key={note.id}
           note={note}

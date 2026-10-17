@@ -132,11 +132,11 @@ button { cursor: pointer; }
   border-radius: 3px;
 }
 .find-input { flex: 1; min-width: 0; }
-.find-input:focus, .sort-field:focus, .dialog-title:focus, .dialog-tags:focus, .dialog-body:focus, .dialog-body-preview:focus { outline: none; border-color: var(--accent); }
+.find-input:focus, .sort-field:focus { outline: none; border-color: var(--accent); }
 .find-btn { flex: none; padding: 0 7px; color: var(--accent); }
 .visible-count { flex: none; min-width: 2em; text-align: center; }
 
-.notes { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.notes { padding: 8px; display: flex; flex-direction: column; gap: 8px; scroll-padding: 8px; }
 .notes:focus { outline: none; }
 .note { flex: none; overflow: hidden; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; }
 .note-head { display: flex; align-items: baseline; gap: 10px; padding: 4px 10px; background: #eef2f7; border-bottom: 1px solid var(--border-soft); }
@@ -168,10 +168,10 @@ button { cursor: pointer; }
   cursor: text;
 }
 .note-text::-webkit-scrollbar { display: none; }
-.note-text ul, .note-text ol, .dialog-body-preview ul, .dialog-body-preview ol { margin: 0 0 8px; padding-left: 1.5em; }
-.note-text li, .dialog-body-preview li { padding-left: .2em; }
-.note-text li > ul, .note-text li > ol, .dialog-body-preview li > ul, .dialog-body-preview li > ol { margin-bottom: 0; }
-.note-text blockquote, .dialog-body-preview blockquote {
+.note-text ul, .note-text ol, .editor-preview ul, .editor-preview ol { margin: 0 0 8px; padding-left: 1.5em; }
+.note-text li, .editor-preview li { padding-left: .2em; }
+.note-text li > ul, .note-text li > ol, .editor-preview li > ul, .editor-preview li > ol { margin-bottom: 0; }
+.note-text blockquote, .editor-preview blockquote {
   margin: 0 0 8px;
   padding: 2px 10px;
   color: #5b636e;
@@ -180,8 +180,8 @@ button { cursor: pointer; }
   border-left: 3px solid var(--border);
   border-radius: 0 3px 3px 0;
 }
-.note-text blockquote > :last-child, .dialog-body-preview blockquote > :last-child { margin-bottom: 0; }
-.note-text code, .dialog-body-preview code {
+.note-text blockquote > :last-child, .editor-preview blockquote > :last-child { margin-bottom: 0; }
+.note-text code, .editor-preview code {
   padding: 1px 4px;
   font-family: Consolas, 'Cascadia Mono', monospace;
   font-size: .9em;
@@ -189,7 +189,7 @@ button { cursor: pointer; }
   border: 1px solid var(--border-soft);
   border-radius: 3px;
 }
-.note-text pre, .dialog-body-preview pre {
+.note-text pre, .editor-preview pre {
   margin: 0 0 8px;
   padding: 6px 10px;
   overflow-x: auto;
@@ -198,7 +198,10 @@ button { cursor: pointer; }
   border-left: 3px solid var(--border);
   border-radius: 3px;
 }
-.note-text pre code, .dialog-body-preview pre code { padding: 0; background: none; border: none; }
+.note-text pre code, .editor-preview pre code { padding: 0; background: none; border: none; }
+.note-tag { color: var(--accent); }
+.note:not(.editing) .note-tag { cursor: pointer; }
+.note:not(.editing) .note-tag:hover { text-decoration: underline; }
 .note-match { padding: 0 1px; background: #fff3a6; border: 1px solid #d6bf4a; border-radius: 2px; }
 .note.selected { background: var(--note-sel); border-color: var(--accent); }
 .note.selected .note-head { background: var(--head-sel); border-bottom-color: var(--accent); }
@@ -234,21 +237,21 @@ button { cursor: pointer; }
 }
 .month.selected { background: var(--selected); font-weight: 600; }
 
-.dialog { width: 75vw; height: 75vh; inset: 0; margin: auto; padding: 0; color: var(--text); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; }
-.dialog::backdrop { background: rgb(0 0 0 / 25%); }
-.dialog-form { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 10px; }
-.dialog-head { flex: none; padding-bottom: 6px; color: var(--muted); border-bottom: 1px solid var(--border-soft); }
-.dialog-title, .dialog-tags, .dialog-body, .dialog-body-preview { padding: 5px 8px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 3px; }
-.dialog-title { flex: none; font-size: 15px; font-weight: 600; }
-.dialog-body, .dialog-body-preview { flex: 1; min-height: 0; }
-.dialog-body { resize: none; }
-.dialog-body-preview { overflow-y: auto; }
-.dialog-buttons { flex: none; display: flex; justify-content: space-between; gap: 8px; }
-.body-mode, .dialog-actions { display: flex; gap: 8px; }
-.mode-button, .dialog-btn { min-width: 5.5em; }
-.mode-button.active { background: var(--head-sel); border-color: var(--accent); }
-.dialog-btn { height: auto; padding: 5px 12px; }
-
+/* A note in edit mode: toolbar on top, then the title and the body sharing a border. */
+.note.editing { cursor: default; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.editor-bar { display: flex; align-items: center; gap: 8px; padding: 3px 6px; background: var(--head-sel); border-bottom: 1px solid var(--accent); }
+.body-mode, .editor-actions { display: flex; gap: 4px; }
+.editor-label { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.editor-btn { height: 22px; min-width: 4.8em; }
+.mode-button.active { background: var(--head-sel); border-color: var(--accent); color: var(--accent); }
+.editor-ok { font-weight: 600; color: var(--accent); }
+.editor-title, .editor-body, .editor-preview { display: block; width: 100%; color: var(--text); background: var(--bg); border: 0; border-radius: 0; }
+.editor-title { padding: 5px 10px; font-size: 14px; font-weight: 600; border-bottom: 1px solid var(--border-soft); }
+.editor-body, .editor-preview { min-height: 4em; padding: 6px 10px 8px; resize: vertical; }
+.editor-body { height: 16em; font: inherit; line-height: 1.45; }
+.editor-preview { height: 16em; overflow-y: auto; color: #3b424b; user-select: text; cursor: text; }
+.editor-title:focus, .editor-body:focus, .editor-preview:focus { outline: none; background: #fdfeff; }
+.dialog-btn { min-width: 5.5em; height: auto; padding: 5px 12px; }
 .about { inset: 0; margin: auto; padding: 0; width: 26em; max-width: 92vw; color: var(--text); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; }
 .about::backdrop { background: rgb(0 0 0 / 25%); }
 .about-form { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px 12px; }
@@ -265,5 +268,4 @@ button { cursor: pointer; }
 
 @media (max-width: 720px) {
   .tags, .side { width: 9em; }
-  .dialog { width: 92vw; height: 82vh; }
 }
