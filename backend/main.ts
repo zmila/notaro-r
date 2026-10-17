@@ -46,6 +46,17 @@ export function init(_app: TinyApp) {
     { title: 'Note', items: [
       { id: 'note:new', label: 'New Note', key: 'n' },
     ] },
+    // checked states are synced from the page (it restores them from tiny.store)
+    { title: 'View', items: [
+      { id: 'view:tags', label: 'Tags Column', key: 'shift+t', checked: true },
+      { id: 'view:calendar', label: 'Calendar Column', key: 'shift+d', checked: true },
+      { separator: true },
+      // '=' / '-' are the physical plus/minus keys (VK_OEM_PLUS / VK_OEM_MINUS)
+      { id: 'view:noteGrow', label: 'Expand Selected Note', key: '=' },
+      { id: 'view:noteShrink', label: 'Collapse Selected Note', key: '-' },
+      { id: 'view:allGrow', label: 'Expand All Notes', key: 'shift+=' },
+      { id: 'view:allShrink', label: 'Collapse All Notes', key: 'shift+-' },
+    ] },
     { title: 'Format', items: [
       { id: 'format:bold', label: 'Bold', key: 'b' },
       { id: 'format:italic', label: 'Italic', key: 'i' },

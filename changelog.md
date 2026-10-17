@@ -9,6 +9,12 @@
 - New shortcuts in the notes list: Ctrl+N, Ctrl+V (paste the clipboard as a new note), Ctrl+C (copy the note), F2.
 - Note text in the notes list can be selected with the mouse and copied.
 - Clearer styling for quotes, inline code and code blocks.
+- New one-row toolbar: `N+` (new note) on the left, Find in the middle, Sort on the right; the sort direction button is an emoji (🔽/🔼).
+- Tags and calendar columns can be hidden with the `#` and 📆 toolbar toggles, the View menu, or Ctrl+Shift+T / Ctrl+Shift+D; the choice is remembered.
+- Calendar years collapse and expand by clicking the year header; all years start collapsed.
+- Per-note height toggle left of the note title: █ full note, ▀ 5-line preview (default), ▔ title only; Shift+click goes back.
+- Toolbar toggle to switch all notes at once (top notes first, then the rest, so there is no visible delay).
+- Note height shortcuts: Ctrl+plus / Ctrl+minus expand or collapse the selected note; Ctrl+Shift+plus / Ctrl+Shift+minus do the same for all notes.
 
 ---
 

@@ -7,15 +7,11 @@ interface TagsPanelProps {
   tags: TagItem[]
   selected: string
   onSelect: (tag: string) => void
-  onNewNote: () => void
 }
 
-export function TagsPanel({ tags, selected, onSelect, onNewNote }: TagsPanelProps) {
+export function TagsPanel({ tags, selected, onSelect }: TagsPanelProps) {
   return (
     <aside className="tags">
-      <div className="tags-head">
-        <button type="button" className="head-btn new-note" onClick={onNewNote}>New note +</button>
-      </div>
       <ul className="tag-list">
         {tags.map((tag) => (
           <li className="tag" key={tag.name}>

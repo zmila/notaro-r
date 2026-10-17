@@ -11,7 +11,16 @@ Currently implemented:
  - edit note;
  - delete note;
  - filtering by tag, date and text;
- - sorting by updated/created date or title;
+ - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
+ - collapsible tags and calendar columns: toggle buttons `#` and calendar icon at the right end of the
+   toolbar (pressed = column shown), `View` menu, `Ctrl+Shift+T` / `Ctrl+Shift+D`; the state is remembered;
+ - calendar years are collapsed on start; click a year header to show or hide its months
+   (a collapsed year containing the selected month has its header highlighted in blue);
+ - per-note height toggle left of the title: `█` full note, `▀` 5-line preview (default), `▔` title only;
+   click cycles forward, Shift+click backward; kept in memory only (reset on restart, not saved to the DB);
+ - the same toggle at the right end of the toolbar applies a mode to all notes (the top 20 at once,
+   the rest a moment later); per-note changes made afterwards don't change it, and the next press
+   overrides them again;
  - tray icon (letter N): minimizing or closing the window with the `X` button hides it to the tray,
    `Alt+F4` quits the app; left click on the icon shows/hides it, right click opens a menu with `Show / Hide` and `Quit`;
  - global shortcut `Ctrl+Alt+F11` shows/hides the app from anywhere;
@@ -42,7 +51,12 @@ About popup:
 
 ### Browsing notes
 
-- `Insert` or `Ctrl+N`: create a new note.
+- `Insert` or `Ctrl+N`: create a new note (also the `N+` toolbar button).
+- `Ctrl+Shift+T`: show/hide the tags column.
+- `Ctrl+Shift+D`: show/hide the calendar (dates) column.
+- `Ctrl+plus`: expand the selected note (preview or title only → full, full → preview).
+- `Ctrl+minus`: collapse the selected note (preview or full → title only, title only → preview).
+- `Ctrl+Shift+plus` / `Ctrl+Shift+minus`: the same for all notes (like the toolbar toggle).
 - `Ctrl+V`: open a new note titled `clipboard` with the clipboard text as its body.
   Review it, then save with `OK`.
 - `Ctrl+C`: copy the selected note (title, blank line, body). With text selected in a note,
@@ -135,29 +149,10 @@ and code
 several lines
 ```
 
-
 ## TODO
-
-- [x] main list screen - right mouse click menu - what is it? it is browser menu and has "Back" navigation that goes to blank screen without possibility to return. 
-let's replace it with our custom menu, for beginning with commands "Edit" and "Delete"
-
-- [x] notes in main list has no possibility to select text by mouse: nor click+drag, nor double click do selection. it would be nice to re-enable usual text select and copy operations.
-
-- [x] main screen and preview: markdown should have more visible highlights of blockquote, code and pre (tiny border and background)
-
-- [x] edit notes: lists - think about how to edit and display second and third indent levels, list may be different types when nested (ordered inside unordered), try to reuse Tab and Shift-Tab keys to increase and decrease level of identation
-
-
-- collapsable notes: 
-  -- only header, 5 lines, whole text
-  -- toggle by keyboard (Ctrl minus/plus)
-  -- apply to all notes
-
 
 - find (and replace) while edit notes - new popup
 
-
-- collapsable tags and calendar columns: in Settings menu , in View menu, toggle buttons on main screen (# for tags, calendar emoji or svg for dates  );
 
 - rework of tags: 
   -- in edit popup - don't show separate input field for tags;

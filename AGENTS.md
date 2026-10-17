@@ -68,6 +68,12 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   native accelerator (`Note > New Note`, id `note:new`); the page ignores that id while a
   dialog or the context menu is open. `Ctrl+C`/`Ctrl+V` must NOT become menu accelerators —
   they would break copy/paste in text fields; they're handled in the page's keydown only.
+- Column toggles `Ctrl+Shift+T`/`Ctrl+Shift+D` are `View` menu accelerators (`key: 'shift+t'`,
+  ids `view:tags`/`view:calendar`) plus a page keydown path; `App.tsx` `toggleColumn` drops a
+  menu/keydown pair within 300 ms (button clicks are never deduped). The page owns the state:
+  it restores it from `tiny.store` key `view` and pushes `checked` back with `tiny.menu.update`.
+  The toolbar (`Toolbar.tsx`) is one full-width `<header>` above the `.columns` row:
+  left = `N+`, middle = Find, then Sort, right = column toggles; it never depends on which columns are shown.
 - `app.paths` is a function since tinyjs 0.57, but the bundled `backend/tiny.d.ts` predates it
   (see the cast in `setupTray`).
 - The tinyjs CLI lives in `%LOCALAPPDATA%\tinyjs` (`cli.js`); read it to answer questions
@@ -78,6 +84,20 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
 - Startup speed: `NotesPanel` renders the first 20 notes immediately, then 50 more per frame
   (rAF + setTimeout); `markdownHtml` caches sanitized HTML (LRU-ish, 2000 entries, cap sized
   for the ~1800-note DB). Keep both when touching the notes list.
+- `NoteCard` is `memo`ized and gets one stable `handlers` object (callbacks read the latest
+  props through a ref), so a selection change or a bulk-view batch re-renders only the cards
+  whose props changed. Don't pass inline per-card closures — that defeats the memo.
+- Note view modes (`src/noteView.ts`): the toolbar's bulk toggle bumps `BulkNoteView.gen`; the
+  same `useProgressiveLimit` (keyed by `gen`) spreads the new mode over the list (20, then +50
+  per frame). Per-note overrides carry the `gen` they were made in: current-gen ones win,
+  otherwise cards inside the apply limit show the bulk mode and cards beyond it keep the
+  previous-gen override or `prev`.
+- `Ctrl(+Shift)+plus/minus` (expand/collapse selected/all notes) are `View` menu accelerators
+  with `key: '='`/`'-'` (`'shift+='`/`'shift+-'`) — the launcher maps single chars with
+  `VkKeyScan`, so these are the physical OEM plus/minus keys. The page keydown path matches
+  `event.code` (`Equal`/`Minus`/numpad), shares the menu/keydown dedupe (`acceptShortcut`) and
+  `preventDefault`s to block browser zoom. The selected note is changed through
+  `NotesPanelHandle.stepSelected` (React 19 `ref` prop + `useImperativeHandle`).
 - Modal `<dialog>` (`showModal()`):
   - it focuses the first focusable element (e.g. a link), and neither React's `autoFocus`
     nor `focus()` right after `showModal()` overrode that in testing; set the native

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AboutDialog } from './components/AboutDialog'
 import { CalendarPanel } from './components/CalendarPanel'
 import { ContextMenu } from './components/ContextMenu'
 import { NoteDialog } from './components/NoteDialog'
-import { NotesPanel } from './components/NotesPanel'
-import { SortControls, Toolbar } from './components/Toolbar'
+import { NotesPanel, type NotesPanelHandle } from './components/NotesPanel'
+import { Toolbar } from './components/Toolbar'
 import { TagsPanel } from './components/TagsPanel'
 import { noteToText, textToDraft } from './noteClipboard'
+import { DEFAULT_NOTE_VIEW, growNoteView, shrinkNoteView, type BulkNoteView, type NoteView } from './noteView'
 import type { Note, NoteDraft, SortDirection, SortField } from './types'
 
 function splitTags(value: string): string[] {
@@ -20,6 +21,22 @@ function sortKey(note: Note, field: SortField): string {
 
 function commandKey(event: KeyboardEvent): boolean {
   return event.ctrlKey || event.metaKey
+}
+
+type NoteResize = 'note-grow' | 'note-shrink' | 'all-grow' | 'all-shrink'
+
+const MENU_RESIZE: Record<string, NoteResize | undefined> = {
+  'view:noteGrow': 'note-grow',
+  'view:noteShrink': 'note-shrink',
+  'view:allGrow': 'all-grow',
+  'view:allShrink': 'all-shrink',
+}
+
+// By physical key, so Shift (which turns '=' into '+' and '-' into '_') doesn't matter.
+function resizeKey(event: KeyboardEvent): 'grow' | 'shrink' | null {
+  if (event.code === 'Equal' || event.code === 'NumpadAdd') return 'grow'
+  if (event.code === 'Minus' || event.code === 'NumpadSubtract') return 'shrink'
+  return null
 }
 
 export default function App() {
@@ -37,6 +54,60 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [noteMenu, setNoteMenu] = useState<{ note: Note | null, x: number, y: number, text: string } | null>(null)
   const closeNoteMenu = useCallback(() => setNoteMenu(null), [])
+  const [tagsVisible, setTagsVisible] = useState(true)
+  const [calendarVisible, setCalendarVisible] = useState(true)
+  const [viewLoaded, setViewLoaded] = useState(false)
+  const [bulkView, setBulkView] = useState<BulkNoteView>({ view: DEFAULT_NOTE_VIEW, prev: DEFAULT_NOTE_VIEW, gen: 0 })
+  const applyBulkView = useCallback((view: NoteView) => {
+    setBulkView((current) => ({ view, prev: current.view, gen: current.gen + 1 }))
+  }, [])
+  const notesPanel = useRef<NotesPanelHandle>(null)
+  // A shortcut may arrive both as a native menu accelerator and as a keydown;
+  // drop the second of such a pair. Button clicks always act.
+  const lastShortcut = useRef({ action: '', source: '', time: 0 })
+
+  const acceptShortcut = useCallback((action: string, source: 'menu' | 'key' | 'click') => {
+    const last = lastShortcut.current
+    const now = performance.now()
+    if (source !== 'click' && last.action === action && last.source !== source
+      && last.source !== 'click' && now - last.time < 300) return false
+    lastShortcut.current = { action, source, time: now }
+    return true
+  }, [])
+
+  const toggleColumn = useCallback((column: 'tags' | 'calendar', source: 'menu' | 'key' | 'click') => {
+    if (!acceptShortcut(column, source)) return
+    if (column === 'tags') setTagsVisible((value) => !value)
+    else setCalendarVisible((value) => !value)
+  }, [acceptShortcut])
+
+  // Ctrl+plus/minus: the selected note; with Shift: all notes (like the toolbar toggle).
+  const resizeNotes = useCallback((action: NoteResize, source: 'menu' | 'key') => {
+    if (!acceptShortcut(action, source)) return
+    const step = action.endsWith('grow') ? growNoteView : shrinkNoteView
+    if (action.startsWith('all')) setBulkView((current) => ({ view: step(current.view), prev: current.view, gen: current.gen + 1 }))
+    else notesPanel.current?.stepSelected(step)
+  }, [acceptShortcut])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const view = await tiny.store?.get('view') as { tags?: boolean, calendar?: boolean } | null
+        if (view) {
+          setTagsVisible(view.tags !== false)
+          setCalendarVisible(view.calendar !== false)
+        }
+      } catch { /* no store (plain browser): keep defaults */ }
+      setViewLoaded(true)
+    })()
+  }, [])
+
+  useEffect(() => {
+    if (!viewLoaded) return
+    void tiny.menu?.update?.('view:tags', { checked: tagsVisible })?.catch(() => {})
+    void tiny.menu?.update?.('view:calendar', { checked: calendarVisible })?.catch(() => {})
+    void tiny.store?.set('view', { tags: tagsVisible, calendar: calendarVisible })?.catch(() => {})
+  }, [viewLoaded, tagsVisible, calendarVisible])
 
   const refresh = useCallback(async () => {
     const result = await tiny.api.call('listNotes', {}) as Note[]
@@ -51,7 +122,11 @@ export default function App() {
     if (id === 'about') setAboutOpen(true)
     // Ctrl+N arrives as a native menu accelerator (WebView2 swallows the key).
     if (id === 'note:new' && !document.querySelector('dialog[open], .context-menu')) openNewNote()
-  }), [])
+    if (id === 'view:tags') toggleColumn('tags', 'menu')
+    if (id === 'view:calendar') toggleColumn('calendar', 'menu')
+    const resize = MENU_RESIZE[id]
+    if (resize && !document.querySelector('dialog[open], .context-menu')) resizeNotes(resize, 'menu')
+  }), [toggleColumn, resizeNotes])
 
   const sortedNotes = useMemo(() => [...notes].sort((a, b) => {
     const order = sortDirection === 'asc' ? 1 : -1
@@ -184,6 +259,14 @@ export default function App() {
         const input = document.getElementById('find-input') as HTMLInputElement | null
         input?.focus()
         input?.select()
+      } else if (commandKey(event) && event.shiftKey && !event.altKey && (key === 't' || key === 'd')) {
+        event.preventDefault()
+        if (!event.repeat) toggleColumn(key === 't' ? 'tags' : 'calendar', 'key')
+      } else if (commandKey(event) && !event.altKey && resizeKey(event)) {
+        // Also keeps the browser's own Ctrl+plus/minus page zoom away.
+        event.preventDefault()
+        const grow = resizeKey(event) === 'grow'
+        if (!event.repeat) resizeNotes(event.shiftKey ? (grow ? 'all-grow' : 'all-shrink') : (grow ? 'note-grow' : 'note-shrink'), 'key')
       } else if (event.key === 'Escape') {
         event.preventDefault()
         resetFilters()
@@ -217,33 +300,46 @@ export default function App() {
 
   return (
     <div className="app">
-      <TagsPanel tags={tags} selected={selectedTag} onSelect={setSelectedTag} onNewNote={openNewNote} />
-      <main className="main">
-        <Toolbar
-          search={searchInput}
-          visibleCount={visibleNotes.length}
-          onSearchChange={setSearchInput}
-          onSearch={() => setSearch(searchInput)}
-        />
-        <NotesPanel
-          notes={visibleNotes}
-          terms={terms}
-          selectedId={selectedId}
-          firstMatchId={firstMatchId}
-          onSelect={(note) => setSelectedId((current) => current === note.id ? null : note.id)}
-          onEdit={openEditNote}
-          onMenu={openNoteMenu}
-        />
-      </main>
-      <aside className="side">
-        <SortControls
-          field={sortField}
-          direction={sortDirection}
-          onFieldChange={setSortField}
-          onDirectionChange={() => setSortDirection((current) => current === 'asc' ? 'desc' : 'asc')}
-        />
-        <CalendarPanel groups={calendarGroups} selected={selectedMonth} onSelect={setSelectedMonth} />
-      </aside>
+      <Toolbar
+        search={searchInput}
+        visibleCount={visibleNotes.length}
+        tagsVisible={tagsVisible}
+        calendarVisible={calendarVisible}
+        onToggleTags={() => toggleColumn('tags', 'click')}
+        onToggleCalendar={() => toggleColumn('calendar', 'click')}
+        onNewNote={openNewNote}
+        notesView={bulkView.view}
+        onNotesViewChange={applyBulkView}
+        onSearchChange={setSearchInput}
+        onSearch={() => setSearch(searchInput)}
+        sort={{
+          field: sortField,
+          direction: sortDirection,
+          onFieldChange: setSortField,
+          onDirectionChange: () => setSortDirection((current) => current === 'asc' ? 'desc' : 'asc'),
+        }}
+      />
+      <div className="columns">
+        {tagsVisible && <TagsPanel tags={tags} selected={selectedTag} onSelect={setSelectedTag} />}
+        <main className="main">
+          <NotesPanel
+            ref={notesPanel}
+            notes={visibleNotes}
+            terms={terms}
+            selectedId={selectedId}
+            firstMatchId={firstMatchId}
+            bulkView={bulkView}
+            onSelect={(note) => setSelectedId((current) => current === note.id ? null : note.id)}
+            onEdit={openEditNote}
+            onMenu={openNoteMenu}
+          />
+        </main>
+        {calendarVisible && (
+          <aside className="side">
+            <CalendarPanel groups={calendarGroups} selected={selectedMonth} onSelect={setSelectedMonth} />
+          </aside>
+        )}
+      </div>
       <NoteDialog
         note={dialogNote}
         initial={dialogInitial}
