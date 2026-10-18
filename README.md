@@ -28,7 +28,7 @@ Main screen:
 ![main screen](./docs/main_screen.png)
 
 Edit note:
-![main screen](./docs/main_screen.png)
+![main screen](./docs/edit_note.png)
 
 Filtering:
 ![filtering](./docs/filtering.png)
