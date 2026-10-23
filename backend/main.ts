@@ -4,6 +4,8 @@ import { TRAY_ICON_PNG_BASE64 } from './trayIcon';
 
 const HOTKEY = 'ctrl+alt+f11';
 const HOTKEY_LABEL = 'Ctrl+Alt+F11';
+// as in the nib example: txiki has no os.platform()
+const IS_MAC = tjs.env.OS !== 'Windows_NT' && !/linux/i.test(globalThis.navigator?.platform ?? '');
 
 interface NoteRow {
   id: number;
@@ -41,10 +43,28 @@ let ready = Promise.resolve();
 export function init(_app: TinyApp) {
 
   _app.menu.set([
+    // Ids reach the page through tiny.menu.on; it owns the note actions.
+    { title: 'File', items: [
+      { id: 'file:import', label: 'Import…' },
+      { separator: true },
+      { id: 'file:exportAll', label: 'Export All…' },
+      { id: 'file:exportListed', label: 'Export Selected…' },
+      { separator: true },
+      { id: 'file:exit', label: 'Exit' },
+    ] },
     // Native accelerators: WebView2's browser-key filter swallows Ctrl+B/I/U/K/D
     // (and Ctrl+N) before the page sees them, but menu accelerators always fire.
-    { title: 'Note', items: [
+    // Copy/Paste/Delete get no accelerators: they would steal Ctrl+C/Ctrl+V/Del
+    // from text fields; the page handles those keys itself.
+    // macOS always installs a stock Edit menu, so these items join it there
+    // (role 'edit'); Windows/Linux get a plain Edit menu of their own.
+    { ...(IS_MAC ? { role: 'edit' as const } : { title: 'Edit' }), items: [
       { id: 'note:new', label: 'New Note', key: 'n' },
+      { separator: true },
+      { id: 'note:copy', label: 'Copy Note', enabled: false },
+      { id: 'note:paste', label: 'Paste as Note' },
+      { separator: true },
+      { id: 'note:delete', label: 'Delete Note', enabled: false },
     ] },
     // checked states are synced from the page (it restores them from tiny.store)
     { title: 'View', items: [
@@ -111,6 +131,7 @@ export function init(_app: TinyApp) {
     );
     stmts.delete = db.prepare(`DELETE FROM note WHERE id = ?`);
     stmts.count = db.prepare(`SELECT COUNT(*) AS n FROM note`);
+    stmts.now = db.prepare(`SELECT datetime('now') AS now`);
 
     seed();
   })();
@@ -214,6 +235,62 @@ function normalizeTags(tags: NoteInput['tags'] = []): string {
   return JSON.stringify(list.map((t) => String(t).trim()).filter(Boolean));
 }
 
+// ---------------------------------------------------------------- export
+
+interface ExportInput {
+  /** true: every note; otherwise `ids`, written in the given order */
+  all?: boolean;
+  ids?: number[];
+  /** the file chosen in the page's Save As dialog */
+  path: string;
+}
+
+// Characters XML 1.0 forbids even in CDATA.
+const XML_INVALID = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+
+function xmlAttr(value: unknown): string {
+  return String(value ?? '').replace(XML_INVALID, '').replace(/[&<>"\t\n\r]/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\t': '&#9;', '\n': '&#10;', '\r': '&#13;',
+  }[c]!));
+}
+
+function xmlCdata(value: string): string {
+  // `]]>` would end the section: split it across two.
+  return `<![CDATA[${value.replace(XML_INVALID, '').replaceAll(']]>', ']]]]><![CDATA[>')}]]>`;
+}
+
+interface ImportNote {
+  title?: string;
+  body?: string;
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 'yyyy-mm-dd' or 'yyyy-mm-dd HH:MM[:SS]' (a 'T' separator is accepted) → the DB's 'yyyy-mm-dd HH:MM:SS'.
+function validDate(value: unknown): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})(:\d{2})?)?$/.exec(String(value ?? '').trim());
+  if (!match) return null;
+  return `${match[1]} ${match[2] ?? '00:00'}${match[3] ?? ':00'}`;
+}
+
+// <notaro version updatedAt notesCount><note id title createdAt updatedAt tags>body</note>…</notaro>
+function notesXml(notes: Note[], version: string, exportedAt: string): string {
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<notaro version="${xmlAttr(version)}" updatedAt="${xmlAttr(exportedAt)}" notesCount="${notes.length}">`,
+  ];
+  for (const note of notes) {
+    const tags = note.tags.map((tag) => String(tag).trim().replace(/\s+/g, '_')).filter(Boolean).join(' ');
+    lines.push(
+      `  <note id="${note.id}" title="${xmlAttr(note.title)}" createdAt="${xmlAttr(note.created_at)}"`
+      + ` updatedAt="${xmlAttr(note.updated_at)}" tags="${xmlAttr(tags)}">${xmlCdata(note.body)}</note>`,
+    );
+  }
+  lines.push('</notaro>', '');
+  return lines.join('\n');
+}
+
 export const api: Record<string, TinyApiHandler> = {
   // Alt+F4 in the page: terminate instead of hiding to tray
   quitApp: (_params, app) => { app.quit(); return true; },
@@ -239,5 +316,47 @@ export const api: Record<string, TinyApiHandler> = {
   deleteNote: withDb<{ id: number }, { id: number }>(({ id }) => {
     stmts.delete.run(id);
     return { id };
+  }),
+
+  // Writes the notes as XML to `path`; returns how many were written.
+  exportNotes: async (params, app) => {
+    await ready;
+    const { all, ids = [], path } = params as ExportInput;
+    if (!path) throw new Error('no file chosen');
+    const notes: Note[] = stmts.list.all().map(rowToNote);
+    let picked = notes;
+    if (!all) {
+      const byId = new Map(notes.map((note) => [note.id, note]));
+      picked = ids.map((id) => byId.get(Number(id))).filter((note): note is Note => !!note);
+    }
+    const { version } = await app.info();
+    const xml = notesXml(picked, version, stmts.now.all()[0].now);
+    await tjs.writeFile(path, new TextEncoder().encode(xml));
+    return { path, count: picked.length };
+  },
+
+  // The page parses it (DOMParser); txiki has no XML parser.
+  readTextFile: async ({ path }: { path?: string }) => {
+    if (!path) throw new Error('no file chosen');
+    return new TextDecoder().decode(await tjs.readFile(path));
+  },
+
+  // Inserts imported notes in one transaction; dates are kept as given
+  // (created_at falls back to now, updated_at to created_at).
+  importNotes: withDb(({ notes = [] }: { notes?: ImportNote[] }) => {
+    const now = stmts.now.all()[0].now;
+    db.exec('BEGIN');
+    try {
+      for (const note of notes) {
+        const created = validDate(note.created_at) ?? now;
+        const updated = validDate(note.updated_at) ?? created;
+        stmts.insertAt.all(String(note.title ?? '').trim(), String(note.body ?? ''), normalizeTags(note.tags ?? []), created, updated);
+      }
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return { count: notes.length };
   }),
 }

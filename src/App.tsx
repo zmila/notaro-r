@@ -8,7 +8,8 @@ import { Toolbar } from './components/Toolbar'
 import { TagsPanel } from './components/TagsPanel'
 import { noteToText, textToDraft } from './noteClipboard'
 import { revealNoteEditor } from './noteEditorDom'
-import { appendMissingTags, extractTags } from './noteTags'
+import { appendMissingTags, extractTags, withTagLine } from './noteTags'
+import { localStamp, parseNotaroXml } from './notesImport'
 import { DEFAULT_NOTE_VIEW, growNoteView, shrinkNoteView, type BulkNoteView, type NoteView } from './noteView'
 import type { Note, NoteDraft, SortDirection, SortField } from './types'
 
@@ -330,6 +331,82 @@ export default function App() {
     const resize = MENU_RESIZE[id]
     if (resize && !document.querySelector('dialog[open], .context-menu')) resizeNotes(resize, 'menu')
   }), [toggleColumn, resizeNotes, openNewNote])
+
+  async function exportNotes(scope: 'all' | 'listed') {
+    const ids = scope === 'all' ? [] : visibleNotes.map((note) => note.id)
+    if (scope === 'listed' && ids.length === 0) return
+    const stamp = new Date().toISOString().slice(0, 10)
+    const path = await tiny.dialog.saveFile({ types: ['xml'], name: `notaro-${scope === 'all' ? 'all' : 'selected'}-${stamp}` })
+    if (!path) return
+    try {
+      const { count } = await tiny.api.call('exportNotes', { all: scope === 'all', ids, path }) as { count: number }
+      await tiny.dialog.alert(`Exported ${count} ${count === 1 ? 'note' : 'notes'}.`, path)
+    } catch (error) {
+      await tiny.dialog.alert('Export failed.', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  async function importNotes() {
+    if (!await leaveEditor()) return
+    const path = await tiny.dialog.openFile({ types: ['xml'] })
+    if (!path) return
+    try {
+      const parsed = parseNotaroXml(await tiny.api.call('readTextFile', { path }) as string)
+      if ('error' in parsed) {
+        await tiny.dialog.alert('Nothing to import.', parsed.error)
+        return
+      }
+      const tag = `imported_${localStamp(new Date())}`
+      const notes = parsed.notes.map((note) => {
+        const body = withTagLine(note.body, [...note.tags, tag])
+        return { ...note, body, tags: extractTags(body) }
+      })
+      await tiny.api.call('importNotes', { notes })
+      await refresh()
+      setSearchInput('')
+      setSearch('')
+      setSelectedMonth(null)
+      setSelectedTag(tag)
+    } catch (error) {
+      await tiny.dialog.alert('Import failed.', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  async function exitApp() {
+    if (await leaveEditor()) void tiny.api.call('quitApp', {})
+  }
+
+  // File/Edit menu commands act on the latest state; one subscription reads it through a ref.
+  const fileEditCommands = useRef<Record<string, () => void>>({})
+  useEffect(() => {
+    fileEditCommands.current = {
+      'file:import': () => void importNotes(),
+      'file:exportAll': () => void exportNotes('all'),
+      'file:exportListed': () => void exportNotes('listed'),
+      'file:exit': () => void exitApp(),
+      'note:copy': () => {
+        const note = notes.find((item) => item.id === selectedId)
+        if (note) void copyNote(note)
+      },
+      'note:paste': () => void pasteAsNewNote(),
+      'note:delete': deleteSelected,
+    }
+  })
+
+  useEffect(() => tiny.menu.on((id) => {
+    if (document.querySelector('dialog[open], .context-menu')) return
+    fileEditCommands.current[id]?.()
+  }), [])
+
+  const hasSelected = notes.some((item) => item.id === selectedId)
+  const hasListed = visibleNotes.length > 0
+  useEffect(() => {
+    void tiny.menu?.update?.('note:copy', { enabled: hasSelected })?.catch(() => {})
+    void tiny.menu?.update?.('note:delete', { enabled: hasSelected })?.catch(() => {})
+  }, [hasSelected])
+  useEffect(() => {
+    void tiny.menu?.update?.('file:exportListed', { enabled: hasListed })?.catch(() => {})
+  }, [hasListed])
 
   function openEditNote(note: Note) {
     if (editingRef.current?.note?.id === note.id) {

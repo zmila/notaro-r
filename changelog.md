@@ -1,5 +1,13 @@
 # changelog
 
+## version 0.8.0, 2026-10-23
+### what's new
+- Export: `File > Export All…` and `File > Export Selected…` (the notes currently listed) save notes to an XML file with their titles, dates, tags and Markdown bodies.
+- Import: `File > Import…` adds the notes from an exported XML file as new notes, keeping their titles and dates. Tags from the body and the `tags` attribute are merged into the body's last line, together with a new `#imported_yyyymmdd_hhmmss` tag; after the import that tag is selected, so only the imported notes are shown.
+- Menus: the `Note` menu is now `Edit` (New Note, Copy Note, Paste as Note, Delete Note), and a new `File` menu holds Import, Export and Exit.
+
+---
+
 ## version 0.7.0, 2026-10-23
 ### what's new
 - Notes in the list (preview and full view) and the editor's Preview end with a row of their tags, e.g. `#todo #demo`; clicking a tag selects it in the tags column. A last body line that holds only tags is hidden there, but stays in the editor.

@@ -74,6 +74,20 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   it restores it from `tiny.store` key `view` and pushes `checked` back with `tiny.menu.update`.
   The toolbar (`Toolbar.tsx`) is one full-width `<header>` above the `.columns` row:
   left = `N+`, middle = Find, then Sort, right = column toggles; it never depends on which columns are shown.
+- Menus: `File` (`file:import`, `file:exportAll`, `file:exportListed`, `file:exit`), `Edit` (`note:new`
+  with `Ctrl+N`, `note:copy`, `note:paste`, `note:delete` — no accelerators on the last three,
+  they'd steal Ctrl+C/V/Del from text fields; `key` always includes Ctrl, so Del can't be one), View, Format, Help. tiny.d.ts says `role: 'edit'`
+  is skipped on Windows/Linux, so `backend/main.ts` uses it only when `IS_MAC`, else a plain
+  `title: 'Edit'`. App enables/disables items with `tiny.menu.update(id, { enabled })`.
+- Export: native dialogs exist only in the page (`tiny.dialog.saveFile`), not on the backend
+  app, so the page asks for the path first, then calls the `exportNotes({ all, ids, path })`
+  API, which builds the XML (`notesXml`) and writes it with `tjs.writeFile`. Exit goes through
+  the page (`leaveEditor`, then `quitApp`) so unsaved edits prompt first.
+- Import: page `tiny.dialog.openFile` → backend `readTextFile` (txiki has no XML parser) →
+  page `parseNotaroXml` (`src/notesImport.ts`, DOMParser) → `withTagLine` (body tags + `tags`
+  attribute + `imported_<local stamp>`, deduped, as the last line) and `extractTags` → backend `importNotes` (one transaction,
+  `validDate` normalizes dates) → `refresh()` and select that tag. A Playwright `listNotes` stub
+  must return a new array each call, or React sees no change after the import.
 - `app.paths` is a function since tinyjs 0.57, but the bundled `backend/tiny.d.ts` predates it
   (see the cast in `setupTray`).
 - The tinyjs CLI lives in `%LOCALAPPDATA%\tinyjs` (`cli.js`); read it to answer questions

@@ -9,6 +9,8 @@ Currently implemented:
  - create note;
  - edit note in place: the note card turns into an editor (toolbar with Edit/Preview, OK, Cancel on top, then the title and the body; drag the body's bottom-right corner to resize it). One note is edited at a time; the pencil button next to N+ starts editing the selected note, or scrolls back to the note being edited. Actions that change which notes are shown or edited (tag/date/Find filters, new, paste, edit another note, delete) close the editor, asking `Discard unsaved changes?` first when there are unsaved edits; view toggles, sorting, copying and clicks or text selection in other notes keep it open;
  - delete note;
+ - `File > Import…` / `Export All…` / `Export Selected…`: read or save notes as an XML file (see [Export and import](#export-and-import)); `File > Exit` quits (asking about unsaved edits first);
+ - `Edit` menu: `New Note` (`Ctrl+N`), `Copy Note`, `Paste as Note`, `Delete Note` (act on the selected note; the keyboard shortcuts for copy/paste/delete work in the notes list, see below);
  - filtering by tag, date and text;
  - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
  - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
@@ -33,8 +35,53 @@ Edit note:
 Filtering:
 ![filtering](./docs/filtering.png)
 
+Import:
+![import](./docs/import.png)
+
 About popup:
 ![about popup](./docs/about.png)
+
+## Export and import
+
+`File > Export All…` saves every note; `File > Export Selected…` saves the notes currently
+listed (after the tag, date and Find filters), in list order. It is disabled when the list is empty.
+
+The app first shows a `Save As` dialog with a suggested name (`notaro-all-YYYY-MM-DD.xml` or
+`notaro-selected-YYYY-MM-DD.xml`), then writes the file and reports how many notes were exported.
+
+`File > Import…` asks for an XML file in the format below and adds its notes to the database
+as new notes:
+
+- the `<notaro>` element and its `<note>` children are read; if either is missing, an alert says so and nothing is imported;
+- `id` is ignored (new notes get new ids); `title`, `createdAt` and `updatedAt` are taken from the file (a missing or invalid `createdAt` becomes the import time, a missing `updatedAt` equals `createdAt`);
+- the body is the `CDATA` text; its tags are the `#tags` in the body joined with the `tags` attribute (duplicates removed, case-insensitive) and the tag `#imported_yyyymmdd_hhmmss` (the import's local time);
+- the full tag list is written as the body's last line (`#a #b #imported_…`), replacing a last line that held only tags;
+- after the import the list reloads and that tag is selected, so exactly the imported notes are shown.
+
+### File format
+
+A UTF-8 XML file:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<notaro version="0.7.0" updatedAt="2026-10-23 17:00:00" notesCount="2">
+  <note id="33" title="Shopping" createdAt="2026-10-01 10:00:00" updatedAt="2026-10-02 11:00:00" tags="todo home"><![CDATA[- milk
+- bread
+#todo #home]]></note>
+  <note id="34" title="Idea" createdAt="2026-10-03 09:15:00" updatedAt="2026-10-03 09:15:00" tags=""><![CDATA[Some **markdown** text]]></note>
+</notaro>
+```
+
+- `notaro`: the root element.
+  - `version`: the app version that made the file.
+  - `updatedAt`: the export time (`yyyy-mm-dd HH:MM:SS`, UTC).
+  - `notesCount`: the number of `note` elements.
+- `note`: one element per note.
+  - `id`: the note's database id.
+  - `title`: the note title. Attribute values are XML-escaped (`&amp;`, `&lt;`, `&gt;`, `&quot;`, line breaks as `&#10;`).
+  - `createdAt`, `updatedAt`: as stored in the database (`yyyy-mm-dd HH:MM:SS`, UTC).
+  - `tags`: the note's tags without `#`, separated by spaces.
+  - The note body, as Markdown text in a `CDATA` section. A `]]>` inside the body is split across two `CDATA` sections, so XML parsers read it back unchanged.
 
 ## Keyboard shortcuts
 
@@ -166,7 +213,6 @@ several lines
 
 ## TODO
 
-- export and import
 - find (and replace) while edit notes - new popup.
 - implement soft delete (changes in db) and "show deleted", "clear deleted".
 - implement history feature (list of visited notes with navigation back/forward as in browser). 

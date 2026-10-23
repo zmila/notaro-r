@@ -261,6 +261,7 @@ button { cursor: pointer; }
 .editor-bar { display: flex; align-items: center; gap: 8px; padding: 3px 6px; background: var(--head-sel); border-bottom: 1px solid var(--accent); }
 .body-mode, .editor-actions { display: flex; gap: 4px; }
 .editor-label { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.editor-dates { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .editor-btn { height: 22px; min-width: 4.8em; }
 .mode-button.active { background: var(--head-sel); border-color: var(--accent); color: var(--accent); }
 .editor-ok { font-weight: 600; color: var(--accent); }

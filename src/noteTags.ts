@@ -92,6 +92,21 @@ export function appendMissingTags(body: string, tags: string[]): string {
   return text ? `${text}\n\n${missing.join(' ')}` : missing.join(' ')
 }
 
+// The body's tags plus `extra` (e.g. from an import file), unique case-insensitively,
+// written as the last line; a last line holding only tags is replaced by it.
+export function withTagLine(body: string, extra: string[]): string {
+  const seen = new Set<string>()
+  const tags: string[] = []
+  for (const tag of [...extractTags(body), ...extra.map(asTagWord)]) {
+    if (!tag || seen.has(key(tag))) continue
+    seen.add(key(tag))
+    tags.push(`#${tag}`)
+  }
+  const text = stripTagLine(body).trimEnd()
+  if (tags.length === 0) return text
+  return text ? `${text}\n\n${tags.join(' ')}` : tags.join(' ')
+}
+
 // Wrap tags in rendered (already sanitized) HTML as `<span class="note-tag" data-tag>`.
 export function linkTagsHtml(html: string): string {
   if (!html.includes('#')) return html

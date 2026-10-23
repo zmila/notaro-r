@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Ke
 import { MarkdownContent } from './MarkdownContent'
 import { NoteTags } from './NoteTags'
 import { TagSuggest } from './TagSuggest'
+import { noteDates } from '../noteDates'
 import { extractTags, stripTagLine, tagPrefixAt } from '../noteTags'
 import { textareaCaretRect, type CaretRect } from '../textareaCaret'
 import {
@@ -328,6 +329,7 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
           <button type="button" className={`head-btn editor-btn mode-button${preview ? ' active' : ''}`} title="Preview (Ctrl+Tab)" onClick={() => switchMode(true)}>Preview</button>
         </div>
         <span className="editor-label">{note ? `Note ${note.id}` : 'New note'}{dirty ? ' •' : ''}</span>
+        {note && <time className="editor-dates">{noteDates(note)}</time>}
         <div className="editor-actions">
           <button type="button" className="head-btn editor-btn editor-ok" title="Save (Ctrl+Enter)" onClick={() => void save()}>OK</button>
           <button type="button" className="head-btn editor-btn" title="Cancel (Esc)" onClick={onCancel}>Cancel</button>

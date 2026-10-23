@@ -1,6 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import { MarkdownContent } from './MarkdownContent'
 import { NoteTags } from './NoteTags'
+import { noteDates } from '../noteDates'
 import { stripTagLine } from '../noteTags'
 import { noteViewInfo, stepNoteView, type BulkNoteView, type NoteView } from '../noteView'
 import type { Note } from '../types'
@@ -20,10 +21,6 @@ interface NoteCardProps {
   firstMatch: boolean
   view: NoteView
   handlers: NoteHandlers
-}
-
-function shortDate(value: string): string {
-  return String(value ?? '').slice(0, 16)
 }
 
 function selectedText(card: HTMLElement): string {
@@ -89,10 +86,7 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
           onDoubleClick={(event) => event.stopPropagation()}
         >{current.glyph}</button>
         <h3 className="note-title">{note.title}</h3>
-        <time className="note-date">
-          {shortDate(note.updated_at)}
-          {shortDate(note.created_at) !== shortDate(note.updated_at) ? ` -- ${shortDate(note.created_at)}` : ''}
-        </time>
+        <time className="note-date">{noteDates(note)}</time>
       </div>
       {view !== 'title' && (
         <>
