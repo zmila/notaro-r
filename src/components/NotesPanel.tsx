@@ -1,5 +1,7 @@
-import { Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
+import { Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import { MarkdownContent } from './MarkdownContent'
+import { NoteTags } from './NoteTags'
+import { stripTagLine } from '../noteTags'
 import { noteViewInfo, stepNoteView, type BulkNoteView, type NoteView } from '../noteView'
 import type { Note } from '../types'
 
@@ -36,6 +38,7 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
   const bodyRef = useRef<HTMLDivElement>(null)
   const current = noteViewInfo(view)
   const next = noteViewInfo(stepNoteView(view, false))
+  const body = useMemo(() => stripTagLine(note.body), [note.body])
 
   useEffect(() => {
     const body = bodyRef.current
@@ -92,7 +95,12 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
         </time>
       </div>
       {view !== 'title' && (
-        <MarkdownContent ref={bodyRef} value={note.body} terms={terms} className="note-text" />
+        <>
+          {(body || note.tags.length === 0) && (
+            <MarkdownContent ref={bodyRef} value={body} terms={terms} className="note-text" />
+          )}
+          <NoteTags tags={note.tags} />
+        </>
       )}
     </article>
   )

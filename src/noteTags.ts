@@ -10,22 +10,53 @@ function tagPattern(): RegExp {
 
 const key = (tag: string) => tag.toLocaleLowerCase()
 
-// Code is literal text, and `[text](#anchor)` points into the page: neither holds tags.
-function withoutCode(body: string): string {
+// For each line: is it a code fence line or inside a fenced block?
+function fencedLines(lines: string[]): boolean[] {
   let fence: string | null = null
-  const lines = body.split('\n').map((line) => {
+  return lines.map((line) => {
     const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
     if (fence) {
       if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = null
-      return ''
+      return true
     }
     if (marker) {
       fence = marker
-      return ''
+      return true
     }
-    return line
+    return false
   })
-  return lines.join('\n').replace(/(`+)[^`]+?\1/g, ' ').replace(/\]\([^)]*\)/g, ']')
+}
+
+// Code is literal text, and `[text](#anchor)` points into the page: neither holds tags.
+function withoutCode(body: string): string {
+  const lines = body.split('\n')
+  const fenced = fencedLines(lines)
+  return lines.map((line, index) => fenced[index] ? '' : line).join('\n')
+    .replace(/(`+)[^`]+?\1/g, ' ').replace(/\]\([^)]*\)/g, ']')
+}
+
+const TAG_LINE = new RegExp(`^\\s*${TAG_SOURCE}(?:\\s+${TAG_SOURCE})*\\s*$`, 'u')
+const TAG_PREFIX = new RegExp(`(?<![${WORD}&#/\\\\])#([${WORD}.\\-]*)$`, 'u')
+const TAG_REST = new RegExp(`^[${WORD}.\\-]*`, 'u')
+
+// The tag being typed at `caret`: `start`/`end` bound the word after `#`,
+// `prefix` is its part before the caret.
+export function tagPrefixAt(value: string, caret: number): { start: number; end: number; prefix: string } | null {
+  const lineStart = value.lastIndexOf('\n', caret - 1) + 1
+  const match = TAG_PREFIX.exec(value.slice(lineStart, caret))
+  if (!match) return null
+  const rest = TAG_REST.exec(value.slice(caret))?.[0] ?? ''
+  return { start: caret - match[1].length, end: caret + rest.length, prefix: match[1] }
+}
+
+// The body without its last line when that line holds only tags (`#a #b`):
+// the card shows tags in their own row instead.
+export function stripTagLine(body: string): string {
+  if (!body.includes('#')) return body
+  const lines = body.trimEnd().split('\n')
+  const last = lines.length - 1
+  if (!TAG_LINE.test(lines[last]) || fencedLines(lines)[last]) return body
+  return lines.slice(0, last).join('\n').trimEnd()
 }
 
 // Unique tags in order of first appearance; case-insensitive, the first spelling wins.

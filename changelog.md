@@ -1,5 +1,12 @@
 # changelog
 
+## version 0.7.0, 2026-10-23
+### what's new
+- Notes in the list (preview and full view) and the editor's Preview end with a row of their tags, e.g. `#todo #demo`; clicking a tag selects it in the tags column. A last body line that holds only tags is hidden there, but stays in the editor.
+- Tag suggestions in the note editor: typing `#` and two or more characters shows a popup with the existing tags that start with them. Down moves into the list, Enter or a click inserts the tag, Esc or a click elsewhere closes the popup.
+
+---
+
 ## version 0.6.0, 2026-10-17
 ### what's new
 - Tags are now `#words` in the note body (any script, digits, `_`, `-`, `.`), collected when the note is saved; the separate tags field is gone. Tags are shown in blue, and clicking one in the notes list selects it in the tags column. Older notes get their tags appended as a `#a #b` line when opened for editing.

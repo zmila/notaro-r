@@ -200,6 +200,25 @@ button { cursor: pointer; }
 }
 .note-text pre code, .editor-preview pre code { padding: 0; background: none; border: none; }
 .note-tag { color: var(--accent); }
+.note-tags { display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 3px 10px 5px; font-size: 12.5px; border-top: 1px solid var(--border-soft); }
+.editor-preview + .note-tags { background: var(--bg); }
+.tag-suggest {
+  --tag-row: 22px;
+  position: fixed;
+  z-index: 100;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 18%);
+}
+.tag-suggest-item { height: var(--tag-row); padding: 0 6px; overflow: hidden; color: var(--accent); line-height: var(--tag-row); white-space: nowrap; text-overflow: ellipsis; cursor: default; }
+.tag-suggest-item:hover { background: var(--bg-panel); }
+.tag-suggest-item.active { background: var(--head-sel); }
 .note:not(.editing) .note-tag { cursor: pointer; }
 .note:not(.editing) .note-tag:hover { text-decoration: underline; }
 .note-match { padding: 0 1px; background: #fff3a6; border: 1px solid #d6bf4a; border-radius: 2px; }

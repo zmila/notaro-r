@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { MarkdownContent } from './MarkdownContent'
+import { NoteTags } from './NoteTags'
+import { TagSuggest } from './TagSuggest'
+import { extractTags, stripTagLine, tagPrefixAt } from '../noteTags'
+import { textareaCaretRect, type CaretRect } from '../textareaCaret'
 import {
   formatCommands,
   formatMarkdown,
@@ -18,9 +22,22 @@ interface NoteEditorProps {
   onSave: (draft: NoteDraft) => Promise<void>
   onCancel: () => void
   onDirtyChange: (dirty: boolean) => void
+  /** existing tags, offered while a `#tag` is typed */
+  tags: string[]
 }
 
 const MIN_BODY_HEIGHT = 120
+// Typed characters after `#` before existing tags are offered.
+const MIN_TAG_PREFIX = 2
+
+interface Suggest {
+  /** where the typed tag word starts (after `#`) */
+  start: number
+  items: string[]
+  /** highlighted item; -1 until Down moves into the list */
+  active: number
+  anchor: CaretRect
+}
 
 function applyEdit(body: HTMLTextAreaElement, edit: FormatEdit) {
   body.setSelectionRange(edit.from, edit.to)
@@ -38,7 +55,7 @@ function applyFormatEdit(body: HTMLTextAreaElement, format: FormatCommand) {
 
 // The note card in edit mode: a toolbar on top, then the title and the body
 // sharing one border. The body's bottom-right corner resizes it.
-export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: NoteEditorProps) {
+export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tags }: NoteEditorProps) {
   const cardRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -49,6 +66,10 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: N
   const saving = useRef(false)
   const [draft, setDraft] = useState<NoteDraft>(initial)
   const [preview, setPreview] = useState(false)
+  const [suggest, setSuggestState] = useState<Suggest | null>(null)
+  // Mirrors `suggest` synchronously: onSelect can run before the state lands.
+  const suggestOpen = useRef(false)
+  const insertingTag = useRef(false)
   // Shared by the body and the preview, so switching keeps the size.
   const [height, setHeight] = useState<number | undefined>(undefined)
   const dirty = draft.title !== initial.title || draft.body !== initial.body
@@ -105,6 +126,7 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: N
     if (value === preview) return
     const current = preview ? previewRef.current : bodyRef.current
     if (current) setHeight(current.offsetHeight)
+    setSuggest(null)
     focusBodyAfterToggle.current = true
     setPreview(value)
   }
@@ -125,6 +147,85 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: N
     title?.focus()
     title?.setSelectionRange(title.value.length, title.value.length)
   }
+
+  function setSuggest(next: Suggest | null | ((current: Suggest | null) => Suggest | null)) {
+    if (next === null) suggestOpen.current = false
+    else if (typeof next !== 'function') suggestOpen.current = true
+    setSuggestState(next)
+  }
+
+  // Offer existing tags for the `#tag` at the caret. Typing may open the popup;
+  // caret moves (`open` false) only update or close it.
+  function refreshSuggest(body: HTMLTextAreaElement, open: boolean) {
+    if (!open && !suggestOpen.current) return
+    const token = body.selectionStart === body.selectionEnd ? tagPrefixAt(body.value, body.selectionStart) : null
+    const prefix = token?.prefix.toLocaleLowerCase() ?? ''
+    const items = token && prefix.length >= MIN_TAG_PREFIX
+      ? tags.filter((tag) => tag.toLocaleLowerCase().startsWith(prefix))
+      : []
+    if (!token || items.length === 0 || (items.length === 1 && items[0].toLocaleLowerCase() === prefix)) {
+      if (suggestOpen.current) setSuggest(null)
+      return
+    }
+    const anchor = textareaCaretRect(body, token.start - 1)
+    suggestOpen.current = true
+    setSuggestState((current) => {
+      const kept = current && current.active >= 0 ? items.indexOf(current.items[current.active]) : -1
+      return { start: token.start, items, anchor, active: current && current.active >= 0 ? Math.max(0, kept) : -1 }
+    })
+  }
+
+  function insertTag(tag: string) {
+    const body = bodyRef.current
+    setSuggest(null)
+    if (!body) return
+    const token = tagPrefixAt(body.value, body.selectionStart)
+    if (!token) return
+    const space = /\s/.test(body.value[token.end] ?? '') ? '' : ' '
+    const caret = token.start + tag.length + space.length
+    insertingTag.current = true
+    try {
+      applyEdit(body, { from: token.start, to: token.end, text: tag + space, selectionStart: caret, selectionEnd: caret })
+    } finally {
+      insertingTag.current = false
+    }
+    setDraft((current) => ({ ...current, body: body.value }))
+  }
+
+  // Keys for the open popup; true when handled.
+  function suggestKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
+    if (!suggest || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return false
+    const last = suggest.items.length - 1
+    const move = (active: number) => setSuggest({ ...suggest, active })
+    if (event.key === 'Escape') setSuggest(null)
+    else if (event.key === 'ArrowDown') move(Math.min(last, suggest.active + 1))
+    else if (suggest.active < 0) return false
+    else if (event.key === 'ArrowUp') move(suggest.active - 1)
+    else if (event.key === 'PageDown') move(Math.min(last, suggest.active + 5))
+    else if (event.key === 'PageUp') move(Math.max(0, suggest.active - 5))
+    else if (event.key === 'Enter') insertTag(suggest.items[suggest.active])
+    else return false
+    event.preventDefault()
+    event.stopPropagation()
+    return true
+  }
+
+  // Keep the popup at the caret while the page, the list or the textarea scrolls.
+  const suggesting = suggest !== null
+  useEffect(() => {
+    if (!suggesting) return
+    const follow = (event: Event) => {
+      const body = bodyRef.current
+      if (!body || (event.target instanceof Element && event.target.closest('.tag-suggest'))) return
+      setSuggestState((current) => current && { ...current, anchor: textareaCaretRect(body, current.start - 1) })
+    }
+    window.addEventListener('scroll', follow, true)
+    window.addEventListener('resize', follow)
+    return () => {
+      window.removeEventListener('scroll', follow, true)
+      window.removeEventListener('resize', follow)
+    }
+  }, [suggesting])
 
   function cardKeyDown(event: KeyboardEvent<HTMLElement>) {
     const command = event.ctrlKey || event.metaKey
@@ -174,6 +275,7 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: N
       })
     }
     setDraft((current) => ({ ...current, body: body.value }))
+    if (!insertingTag.current && !renumbering.current) refreshSuggest(body, !inputType.startsWith('history'))
   }
 
   function applyFormat(body: HTMLTextAreaElement, format: FormatCommand) {
@@ -185,6 +287,7 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: N
   function bodyKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const command = event.ctrlKey || event.metaKey
     const body = event.currentTarget
+    if (suggestKeyDown(event)) return
     // Ctrl+Tab bubbles up to the card handler.
     if (event.key === 'Tab' && command) return
     const format = command && !event.shiftKey && !event.altKey ? formatShortcuts[event.key.toLowerCase()] : undefined
@@ -247,13 +350,16 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: N
         }}
       />
       {preview ? (
-        <MarkdownContent
-          ref={previewRef}
-          value={draft.body}
-          className="editor-preview"
-          tabIndex={0}
-          style={{ height }}
-        />
+        <>
+          <MarkdownContent
+            ref={previewRef}
+            value={stripTagLine(draft.body)}
+            className="editor-preview"
+            tabIndex={0}
+            style={{ height }}
+          />
+          <NoteTags tags={extractTags(draft.body)} />
+        </>
       ) : (
         <textarea
           ref={bodyRef}
@@ -263,7 +369,12 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange }: N
           style={{ height }}
           onChange={bodyChange}
           onKeyDown={bodyKeyDown}
+          onSelect={(event) => refreshSuggest(event.currentTarget, false)}
+          onBlur={() => setSuggest(null)}
         />
+      )}
+      {suggest && !preview && (
+        <TagSuggest tags={suggest.items} active={suggest.active} anchor={suggest.anchor} onPick={insertTag} />
       )}
     </article>
   )

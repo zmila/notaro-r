@@ -104,6 +104,12 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   `<span class="note-tag" data-tag>` inside `markdownHtml` (after DOMPurify, so it is cached);
   a click on one in a card calls `onTag`. DB rows from before keep tags only in the `tags`
   column; `App.openEditNote` appends them via `appendMissingTags` when such a note is opened.
+- Tag suggestions (`TagSuggest.tsx`): focus never leaves the textarea — `NoteEditor` drives the
+  popup from the body's keydown (`active` -1 until `Down`), opens/updates it on input
+  (`refreshSuggest(body, true)`) and only updates/closes it on `onSelect` caret moves; a ref
+  mirrors the open state because `onSelect` can run before the state update lands. The popup
+  is portaled to `body` with `position: fixed` at `textareaCaretRect` (mirror-div caret
+  measurement) and `preventDefault`s mousedown so the textarea keeps focus; textarea blur closes it.
 - In-place editing (`NoteEditor.tsx`): App holds one `EditSession` (`note` null = new note, the
   `initial` draft, a `key` that remounts the editor). The draft lives in the editor; it reports
   only dirty flips (`onDirtyChange` → `editDirty` ref), so typing never re-renders App.

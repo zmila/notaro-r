@@ -154,6 +154,9 @@ export default function App() {
     ]
   }, [notes])
 
+  // Real tags only (without the `all` / `untagged` entries), for the editor's suggestions.
+  const tagNames = useMemo(() => tags.slice(2).map((tag) => tag.name), [tags])
+
   const calendarGroups = useMemo(() => {
     const years = new Map<string, Set<string>>()
     for (const note of notes) {
@@ -388,7 +391,9 @@ export default function App() {
         document.getElementById('notes-panel')?.focus({ preventScroll: true })
       } else if (typing || event.altKey) {
         return
-      } else if (event.key === 'Insert' || (commandKey(event) && !event.shiftKey && key === 'n')) {
+      } else if (
+        (event.key === 'Insert' && !event.ctrlKey && !event.shiftKey && !event.metaKey) ||
+        (commandKey(event) && !event.shiftKey && key === 'n')) {
         event.preventDefault()
         openNewNote()
       } else if (commandKey(event) && !event.shiftKey && key === 'v') {
@@ -473,6 +478,7 @@ export default function App() {
                 onSave={(draft) => saveNote(editing.note, draft)}
                 onCancel={closeEditor}
                 onDirtyChange={onEditorDirty}
+                tags={tagNames}
               />
             )}
           />

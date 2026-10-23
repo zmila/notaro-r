@@ -10,7 +10,7 @@ Currently implemented:
  - edit note in place: the note card turns into an editor (toolbar with Edit/Preview, OK, Cancel on top, then the title and the body; drag the body's bottom-right corner to resize it). One note is edited at a time; the pencil button next to N+ starts editing the selected note, or scrolls back to the note being edited. Actions that change which notes are shown or edited (tag/date/Find filters, new, paste, edit another note, delete) close the editor, asking `Discard unsaved changes?` first when there are unsaved edits; view toggles, sorting, copying and clicks or text selection in other notes keep it open;
  - delete note;
  - filtering by tag, date and text;
- - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
+ - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
  - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
  - collapsible tags and calendar columns: toggle buttons `#` and calendar icon at the right end of the toolbar (pressed = column shown), `View` menu, `Ctrl+Shift+T` / `Ctrl+Shift+D`; the state is remembered;
  - calendar years are collapsed on start; click a year header to show or hide its months
@@ -54,7 +54,7 @@ About popup:
 - `Ctrl+V`: open a new note titled `clipboard` with the clipboard text as its body.
   Review it, then save with `OK`.
 - `Ctrl+C`: copy the selected note (title, blank line, body). With text selected in a note,
-  `Ctrl+C` copies just that text.
+  `Ctrl+C` (or `Ctrl+Insert`) copies just that text.
 - `Enter` or `F2`: edit the selected note (or double-click the note's header bar).
 - `Delete`: delete the selected note; the next note (or the previous one, at the end) gets selected.
 - `Escape`: reset filters (outside the note editor) and move the focus to the notes list,
@@ -92,6 +92,10 @@ About popup:
 - Numbered lists renumber themselves when an item is added, removed or moved; only the
   list being edited changes, and it keeps its starting number. `Ctrl+Z` undoes the
   renumbering first, then the edit.
+- Typing `#` and two or more letters shows a popup with existing tags starting with them
+  (it follows further typing). `Down` moves into the list, `Up`/`Down`/`PgUp`/`PgDn` pick a tag,
+  `Enter` inserts it (or click one with the mouse), `Esc` or a click elsewhere closes the popup.
+  `Up` on the first tag returns to the text.
 
 ### Formatting the note body
 
@@ -113,14 +117,27 @@ Line styles apply to every line touched by the selection; pressing again removes
 
 ## How to run
 
-install dependencies
+### install tinyjs
+
+mac/linux:
+> curl -fsSL https://tinyjs.app/install | sh
+
+windows:
+> irm https://tinyjs.app/install.ps1 | iex
+
+verify (in new terminal): 
+> tinyjs version
+
+
+### install dependencies
 > npm install
 
-run dev build with hot reload
+### run dev build with hot reload
 > tinyjs dev 
 
-create executable in `.dist` folder
+### create executable in `.dist` folder
 > tinyjs build
+
 
 ## Versioning
 
@@ -149,6 +166,7 @@ several lines
 
 ## TODO
 
+- export and import
 - find (and replace) while edit notes - new popup.
 - implement soft delete (changes in db) and "show deleted", "clear deleted".
 - implement history feature (list of visited notes with navigation back/forward as in browser). 
