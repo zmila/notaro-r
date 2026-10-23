@@ -15,3 +15,8 @@ dist/
 *.njsproj
 *.sln
 *.sw?
+
+# local data and one-off migration files
+*.xml
+*.ctd
+scripts/migrate_cherrytree_to_notaro.py

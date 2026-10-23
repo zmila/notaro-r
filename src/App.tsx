@@ -54,6 +54,14 @@ interface EditSession {
   key: number
 }
 
+const MIN_SEARCH_LENGTH = 3
+
+// Text shorter than 3 characters (ignoring surrounding whitespace) doesn't filter.
+function effectiveSearch(input: string) {
+  const text = input.trim()
+  return text.length >= MIN_SEARCH_LENGTH ? text : ''
+}
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -424,6 +432,14 @@ export default function App() {
     setSelectedMonth(null)
   }
 
+  // The tag and calendar controls change the filter together with the Find text.
+  function changeFilter(change: () => void) {
+    guarded(() => {
+      setSearch(effectiveSearch(searchInput))
+      change()
+    })
+  }
+
   const filtered = search !== '' || selectedTag !== 'all' || selectedMonth !== null
 
   useEffect(() => {
@@ -517,8 +533,11 @@ export default function App() {
         }}
         notesView={bulkView.view}
         onNotesViewChange={applyBulkView}
-        onSearchChange={setSearchInput}
-        onSearch={() => { if (searchInput !== search) guarded(() => setSearch(searchInput)) }}
+        onSearchChange={(value) => {
+          setSearchInput(value)
+          const next = effectiveSearch(value)
+          if (next !== search) guarded(() => setSearch(next))
+        }}
         sort={{
           field: sortField,
           direction: sortDirection,
@@ -527,7 +546,7 @@ export default function App() {
         }}
       />
       <div className="columns">
-        {tagsVisible && <TagsPanel tags={tags} selected={selectedTag} onSelect={(tag) => { if (tag !== selectedTag) guarded(() => setSelectedTag(tag)) }} />}
+        {tagsVisible && <TagsPanel tags={tags} selected={selectedTag} onSelect={(tag) => { if (tag !== selectedTag) changeFilter(() => setSelectedTag(tag)) }} />}
         <main className="main">
           <NotesPanel
             ref={notesPanel}
@@ -544,7 +563,7 @@ export default function App() {
               // The note's stored spelling, as listed in the tags column.
               const lower = tag.toLocaleLowerCase()
               const name = note.tags.find((item) => item.toLocaleLowerCase() === lower) ?? tag
-              if (name !== selectedTag) guarded(() => setSelectedTag(name))
+              if (name !== selectedTag) changeFilter(() => setSelectedTag(name))
             }}
             editingId={editing?.note?.id ?? null}
             editor={editing && (
@@ -562,7 +581,7 @@ export default function App() {
         </main>
         {calendarVisible && (
           <aside className="side">
-            <CalendarPanel groups={calendarGroups} selected={selectedMonth} onSelect={(month) => guarded(() => setSelectedMonth(month))} />
+            <CalendarPanel groups={calendarGroups} selected={selectedMonth} onSelect={(month) => changeFilter(() => setSelectedMonth(month))} />
           </aside>
         )}
       </div>

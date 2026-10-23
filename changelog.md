@@ -1,5 +1,13 @@
 # changelog
 
+## version 0.8.1, 2026-10-24
+### what's new
+- Find: the list is filtered as you type or paste, once the text has 3 or more characters (ignoring surrounding spaces); the Find button is gone.
+- Find: a `×` button at the right end of the field clears it.
+- Choosing a tag or a calendar month now also applies the text in the Find field, so the tag, calendar and text filters always work together.
+
+---
+
 ## version 0.8.0, 2026-10-23
 ### what's new
 - Export: `File > Export All…` and `File > Export Selected…` (the notes currently listed) save notes to an XML file with their titles, dates, tags and Markdown bodies.

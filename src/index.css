@@ -131,9 +131,24 @@ button { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: 3px;
 }
-.find-input { flex: 1; min-width: 0; }
+.find-box { position: relative; flex: 1; min-width: 0; display: flex; }
+.find-input { flex: 1; min-width: 0; padding-right: 24px; }
+.find-clear {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.find-clear:hover { color: var(--text); }
 .find-input:focus, .sort-field:focus { outline: none; border-color: var(--accent); }
-.find-btn { flex: none; padding: 0 7px; color: var(--accent); }
 .visible-count { flex: none; min-width: 2em; text-align: center; }
 
 .notes { padding: 8px; display: flex; flex-direction: column; gap: 8px; scroll-padding: 8px; }

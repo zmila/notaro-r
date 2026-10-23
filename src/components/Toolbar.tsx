@@ -18,7 +18,6 @@ interface ToolbarProps {
   notesView: NoteView
   onNotesViewChange: (view: NoteView) => void
   onSearchChange: (value: string) => void
-  onSearch: () => void
   sort: SortControlsProps
 }
 
@@ -55,7 +54,6 @@ export function Toolbar({
   notesView,
   onNotesViewChange,
   onSearchChange,
-  onSearch,
   sort,
 }: ToolbarProps) {
   const tagsTitle = `${tagsVisible ? 'Hide' : 'Show'} tags column (${TAGS_SHORTCUT})`
@@ -84,15 +82,27 @@ export function Toolbar({
       </div>
       <div className="toolbar-middle">
         <label className="find-label" htmlFor="find-input">Find:</label>
-        <input
-          id="find-input"
-          className="find-input"
-          value={search}
-          placeholder="filter notes..."
-          onChange={(event) => onSearchChange(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }}
-        />
-        <button type="button" className="head-btn find-btn" title="Find" onClick={onSearch}>Find</button>
+        <div className="find-box">
+          <input
+            id="find-input"
+            className="find-input"
+            value={search}
+            placeholder="filter notes..."
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
+          {search !== '' && (
+            <button
+              type="button"
+              className="find-clear"
+              title="Clear"
+              aria-label="Clear the find field"
+              onClick={() => {
+                onSearchChange('')
+                document.getElementById('find-input')?.focus()
+              }}
+            >×</button>
+          )}
+        </div>
         <output className="visible-count" aria-live="polite">{visibleCount}</output>
       </div>
       <SortControls {...sort} />
