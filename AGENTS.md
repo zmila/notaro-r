@@ -74,14 +74,15 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   it restores it from `tiny.store` key `view` and pushes `checked` back with `tiny.menu.update`.
   The toolbar (`Toolbar.tsx`) is one full-width `<header>` above the `.columns` row:
   left = `N+`, middle = Find, then Sort, right = column toggles; it never depends on which columns are shown.
-- Menus: `File` (`file:import`, `file:exportAll`, `file:exportListed`, `file:exit`), `Edit` (`note:new`
-  with `Ctrl+N`, `note:copy`, `note:paste`, `note:delete` — no accelerators on the last three,
-  they'd steal Ctrl+C/V/Del from text fields; `key` always includes Ctrl, so Del can't be one), View, Format, Help. tiny.d.ts says `role: 'edit'`
+- Menus: `File` (`file:import`, `file:exportAll` = all *listed* notes, `file:exportSelected`, `file:exit`), `Edit` (`note:new`
+  with `Ctrl+N`, `note:copy`, `note:paste`, `note:selectAll`, `note:delete` — no accelerators on the last four,
+  they'd steal Ctrl+C/V/A/Del from text fields; `key` always includes Ctrl, so Del can't be one), View, Format, Help. tiny.d.ts says `role: 'edit'`
   is skipped on Windows/Linux, so `backend/main.ts` uses it only when `IS_MAC`, else a plain
-  `title: 'Edit'`. App enables/disables items with `tiny.menu.update(id, { enabled })`.
+  `title: 'Edit'`. App enables/disables items with `tiny.menu.update(id, { enabled })`, and
+  relabels them with `label` (`Copy 3 Notes`).
 - Export: native dialogs exist only in the page (`tiny.dialog.saveFile`), not on the backend
-  app, so the page asks for the path first, then calls the `exportNotes({ all, ids, path })`
-  API, which builds the XML (`notesXml`) and writes it with `tjs.writeFile`. Exit goes through
+  app, so the page asks for the path first, then calls the `exportNotes({ ids, path })`
+  API (there is no "every note" mode: clearing the filters lists them all), which builds the XML (`notesXml`) and writes it with `tjs.writeFile`. Exit goes through
   the page (`leaveEditor`, then `quitApp`) so unsaved edits prompt first.
 - Import: page `tiny.dialog.openFile` → backend `readTextFile` (txiki has no XML parser) →
   page `parseNotaroXml` (`src/notesImport.ts`, DOMParser) → `withTagLine` (body tags + `tags`
@@ -176,6 +177,15 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   mounts at least up to the selected index, so Ctrl+End works before the progressive mount ends.
   Ctrl+arrow/Home/End/PgUp/PgDn are page keydown only — as menu accelerators they would steal
   the same keys from text fields.
+- Multi-select: tags and months are arrays in App (`selectedTags`/`selectedMonths`, empty = no
+  filter, OR within each), picked through `pickItem` (`src/multiSelect.ts`, returns the same
+  array when nothing changed, so `changeFilter` can skip). Notes: `selectedId` stays the
+  *current* note (cursor, reveal/edit target); `multiIds` only counts while it has more than one
+  id and contains `selectedId` (derived `selection`), so any plain `setSelectedId` drops it — use
+  `selectOnly` to be explicit. `selectedNotes` (listed, in list order; or the single current note)
+  is what copy/delete/export act on. Ctrl+Shift+nav extends from `selectRange` (anchor + the
+  selection it started from). Bulk delete goes through the backend `deleteNotes({ ids })`
+  (one transaction). Ctrl+click in a card is handled before link/tag clicks.
 - The Playwright test page is "not visible": `requestAnimationFrame` never fires, so the
   progressive mount stays at 20 notes there. Test with ≤ 20 listed notes (or a filter).
 - Test stubs: `tiny.menu.on` must return a real unsubscribe — React StrictMode mounts

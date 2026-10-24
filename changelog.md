@@ -1,5 +1,13 @@
 # changelog
 
+## version 0.10.0, 2026-10-24
+### what's new
+- Multi-select for tags: Ctrl+click picks several tags (notes having any of them); `all` stays pinned at the top of the tags column.
+- Multi-select for calendar: Ctrl+click picks several months; selected months are marked `✓` and a year header shows how many are selected.
+- Multi-select for notes: Ctrl+click, Ctrl+Shift+arrows and Ctrl+A select several notes to copy, delete or export at once; `File > Export All…` now exports the listed notes, `File > Export Selected…` the selected ones.
+
+---
+
 ## version 0.9.0, 2026-10-24
 ### what's new
 - Implemented reference/link to other note: typing `[[` in the editor shows a popup with notes (title, id and date) filtered as you type; picking one inserts a Markdown link `[Note title](#note-234)`, shown underlined, and clicking it selects that note.

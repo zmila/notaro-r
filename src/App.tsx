@@ -10,6 +10,7 @@ import { noteToText, textToDraft } from './noteClipboard'
 import { revealNoteEditor } from './noteEditorDom'
 import { appendMissingTags, extractTags, withTagLine } from './noteTags'
 import { clearUpdatedAtDriftAction, removeTagAction, replaceTagAction, runMassAction } from './massActions'
+import { pickItem } from './multiSelect'
 import { localStamp, parseNotaroXml } from './notesImport'
 import { DEFAULT_NOTE_VIEW, growNoteView, shrinkNoteView, type BulkNoteView, type NoteView } from './noteView'
 import type { Note, NoteDraft, SortDirection, SortField } from './types'
@@ -57,6 +58,8 @@ interface EditSession {
 
 const MIN_SEARCH_LENGTH = 3
 
+const NO_IDS: ReadonlySet<number> = new Set()
+
 // Text shorter than 3 characters (ignoring surrounding whitespace) doesn't filter.
 function effectiveSearch(input: string) {
   const text = input.trim()
@@ -66,10 +69,19 @@ function effectiveSearch(input: string) {
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  // Several selected notes (Ctrl+click, Ctrl+Shift+arrows, Ctrl+A); they count
+  // only while they include selectedId, so a plain selection change drops them.
+  const [multiIds, setMultiIds] = useState<ReadonlySet<number>>(NO_IDS)
+  const selectRange = useRef<{ anchor: number, base: ReadonlySet<number>, cursor: number } | null>(null)
+  const selection = useMemo<ReadonlySet<number>>(() => {
+    if (selectedId !== null && multiIds.size > 1 && multiIds.has(selectedId)) return multiIds
+    return selectedId === null ? NO_IDS : new Set([selectedId])
+  }, [selectedId, multiIds])
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [selectedTag, setSelectedTag] = useState('all')
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
+  // Tag and month filters: empty = no filter; a note matches any of the listed ones.
+  const [selectedTags, setSelectedTags] = useState<readonly string[]>([])
+  const [selectedMonths, setSelectedMonths] = useState<readonly string[]>([])
   const [sortField, setSortField] = useState<SortField>('updated')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   // The one note being edited in place (note null: a new note), if any.
@@ -78,7 +90,7 @@ export default function App() {
   const editDirty = useRef(false)
   const editKey = useRef(0)
   const [aboutOpen, setAboutOpen] = useState(false)
-  const [noteMenu, setNoteMenu] = useState<{ note: Note | null, x: number, y: number, text: string } | null>(null)
+  const [noteMenu, setNoteMenu] = useState<{ note: Note | null, notes: Note[], x: number, y: number, text: string } | null>(null)
   const closeNoteMenu = useCallback(() => setNoteMenu(null), [])
   const [tagsVisible, setTagsVisible] = useState(true)
   const [calendarVisible, setCalendarVisible] = useState(true)
@@ -192,16 +204,21 @@ export default function App() {
   const terms = useMemo(() => search.toLowerCase().split(/\s+/).filter(Boolean), [search])
 
   const visibleNotes = useMemo(() => sortedNotes.filter((note) => {
-    const tagMatches = selectedTag === 'all'
-      || (selectedTag === 'untagged' ? note.tags.length === 0 : note.tags.includes(selectedTag))
-    const monthMatches = !selectedMonth
-      || note.created_at.startsWith(selectedMonth)
-      || note.updated_at.startsWith(selectedMonth)
+    const tagMatches = selectedTags.length === 0 || selectedTags.some((tag) =>
+      tag === 'untagged' ? note.tags.length === 0 : note.tags.includes(tag))
+    const monthMatches = selectedMonths.length === 0 || selectedMonths.some((month) =>
+      note.created_at.startsWith(month) || note.updated_at.startsWith(month))
     if (!tagMatches || !monthMatches) return false
     if (terms.length === 0) return true
     const haystack = [note.title, note.body, note.tags.join(' ')].join(' ').toLowerCase()
     return terms.some((term) => haystack.includes(term))
-  }), [selectedMonth, selectedTag, sortedNotes, terms])
+  }), [selectedMonths, selectedTags, sortedNotes, terms])
+
+  // The notes Copy / Delete / Export Selected act on: several selected ones in
+  // list order, or the one current note (even when the filters hide it).
+  const selectedNotes = useMemo(() => selection.size > 1
+    ? visibleNotes.filter((note) => selection.has(note.id))
+    : notes.filter((note) => note.id === selectedId), [notes, selectedId, selection, visibleNotes])
 
   const firstMatchId = terms.length === 0 ? null : visibleNotes.find((note) => {
     const haystack = [note.title, note.body, note.tags.join(' ')].join(' ').toLowerCase()
@@ -212,28 +229,85 @@ export default function App() {
   const [revealGen, setRevealGen] = useState(0)
   const revealSelected = useCallback(() => setRevealGen((gen) => gen + 1), [])
 
-  // A filter change keeps the selected note if it is still listed, otherwise
-  // selects the top one; a sort change keeps it too. Either way it is scrolled
-  // into view. Adjusted during render, so the new list never shows a stale pick.
-  const filterKey = `${search}\n${selectedTag}\n${selectedMonth ?? ''}`
+  // A filter change keeps the selected notes that are still listed, otherwise
+  // selects the top one; a sort change keeps them too. Either way the current one is
+  // scrolled into view. Adjusted during render, so the new list never shows a stale pick.
+  const filterKey = `${search}\n${selectedTags.join('\t')}\n${selectedMonths.join('\t')}`
   const orderKey = `${sortField} ${sortDirection}`
   const [listKeys, setListKeys] = useState({ filterKey, orderKey })
   if (listKeys.filterKey !== filterKey || listKeys.orderKey !== orderKey) {
     setListKeys({ filterKey, orderKey })
-    if (listKeys.filterKey !== filterKey && !visibleNotes.some((note) => note.id === selectedId)) {
-      setSelectedId(visibleNotes[0]?.id ?? null)
+    if (listKeys.filterKey !== filterKey) {
+      const kept = visibleNotes.filter((note) => selection.has(note.id)).map((note) => note.id)
+      if (!kept.includes(selectedId ?? NaN)) setSelectedId(kept[0] ?? visibleNotes[0]?.id ?? null)
+      setMultiIds(kept.length > 1 ? new Set(kept) : NO_IDS)
     }
     setRevealGen((gen) => gen + 1)
   }
 
+  // The current note becomes the only selected one.
+  function selectOnly(id: number | null) {
+    selectRange.current = null
+    setSelectedId(id)
+    setMultiIds(NO_IDS)
+  }
+
+  function setSelection(current: number | null, ids: ReadonlySet<number>) {
+    setSelectedId(current)
+    setMultiIds(ids.size > 1 ? ids : NO_IDS)
+  }
+
+  // Click: select the note only (or unselect it, when it is the only one);
+  // Ctrl+click: add it to the selection or remove it.
+  function selectNote(note: Note, toggle: boolean) {
+    selectRange.current = null
+    if (!toggle) {
+      if (selection.size > 1) selectOnly(note.id)
+      else selectOnly(selectedId === note.id ? null : note.id)
+      return
+    }
+    const next = new Set(selection)
+    if (next.has(note.id)) {
+      next.delete(note.id)
+      setSelection(note.id === selectedId ? [...next].at(-1) ?? null : selectedId, next)
+    } else {
+      next.add(note.id)
+      setSelection(note.id, next)
+    }
+  }
+
+  // Ctrl+A: every listed note.
+  function selectAllListed() {
+    if (visibleNotes.length === 0) return
+    selectRange.current = null
+    const current = visibleNotes.some((note) => note.id === selectedId) ? selectedId : visibleNotes[0].id
+    setSelection(current, new Set(visibleNotes.map((note) => note.id)))
+  }
+
   // Ctrl+Up/Down (±1), Ctrl+PgUp/PgDn (±10), Ctrl+Home/End: move the selection
   // within the listed notes; with nothing selected, start from the top note.
-  function moveSelection(target: (index: number, last: number) => number) {
+  // With Shift (`extend`) the notes from where it started to the new one are
+  // selected too, on top of what was selected before.
+  function moveSelection(target: (index: number, last: number) => number, extend = false) {
     if (visibleNotes.length === 0) return
     const current = visibleNotes.findIndex((note) => note.id === selectedId)
     const last = visibleNotes.length - 1
     const index = current < 0 ? 0 : Math.max(0, Math.min(last, target(current, last)))
-    setSelectedId(visibleNotes[index].id)
+    const id = visibleNotes[index].id
+    if (!extend) {
+      selectOnly(id)
+    } else {
+      let range = selectRange.current
+      let anchor = range ? visibleNotes.findIndex((note) => note.id === range?.anchor) : -1
+      if (!range || range.cursor !== selectedId || anchor < 0) {
+        anchor = current < 0 ? index : current
+        range = { anchor: visibleNotes[anchor].id, base: selection, cursor: id }
+      }
+      const next = new Set(range.base)
+      for (let i = Math.min(anchor, index); i <= Math.max(anchor, index); i += 1) next.add(visibleNotes[i].id)
+      selectRange.current = { ...range, cursor: id }
+      setSelection(id, next)
+    }
     revealSelected()
   }
 
@@ -243,7 +317,11 @@ export default function App() {
     editingRef.current = session
     editDirty.current = false
     setEditing(session)
-    if (note) setSelectedId(note.id)
+    if (note) {
+      selectRange.current = null
+      setSelectedId(note.id)
+      setMultiIds(NO_IDS)
+    }
   }, [])
 
   const closeEditor = useCallback(() => {
@@ -286,41 +364,56 @@ export default function App() {
       await tiny.api.call('updateNote', { id: note.id, ...payload })
     } else {
       const created = await tiny.api.call('addNote', payload) as Note
-      setSelectedId(created.id)
+      selectOnly(created.id)
     }
     await refresh()
     closeEditor()
     revealSelected()
   }
 
-  async function deleteNote(note: Note) {
-    if (!await leaveEditor()) return
-    const confirmed = await tiny.dialog.confirm('Delete this note?', { detail: note.title, ok: 'Delete' })
+  async function deleteNotes(list: Note[]) {
+    if (list.length === 0 || !await leaveEditor()) return
+    const one = list.length === 1
+    const titles = list.slice(0, 5).map((note) => note.title.trim() || `Note ${note.id}`).join(', ')
+    const confirmed = await tiny.dialog.confirm(one ? 'Delete this note?' : `Delete ${list.length} notes?`, {
+      detail: one ? list[0].title : list.length > 5 ? `${titles} and ${list.length - 5} more.` : titles,
+      ok: 'Delete',
+    })
     if (!confirmed) return
     // The selection moves to the next listed note, or the previous one at the end.
-    const index = visibleNotes.findIndex((item) => item.id === note.id)
-    const neighbor = index < 0 ? null : (visibleNotes[index + 1] ?? visibleNotes[index - 1] ?? null)
-    await tiny.api.call('deleteNote', { id: note.id })
+    const ids = new Set(list.map((note) => note.id))
+    const indexes = visibleNotes.flatMap((note, index) => ids.has(note.id) ? [index] : [])
+    const kept = (note: Note) => !ids.has(note.id)
+    const neighbor = indexes.length === 0 ? null
+      : visibleNotes.slice(indexes.at(-1)! + 1).find(kept) ?? visibleNotes.slice(0, indexes[0]).findLast(kept) ?? null
+    await tiny.api.call('deleteNotes', { ids: [...ids] })
     await refresh()
-    setSelectedId((current) => current === note.id ? neighbor?.id ?? null : current)
+    if ([...selection].some((id) => ids.has(id))) selectOnly(neighbor?.id ?? null)
     revealSelected()
     document.getElementById('notes-panel')?.focus({ preventScroll: true })
   }
 
   function deleteSelected() {
-    const note = notes.find((item) => item.id === selectedId)
-    if (note) void deleteNote(note)
+    void deleteNotes(selectedNotes)
   }
 
-  // A right-click on a card selects it; on empty space the menu acts on the
-  // current selection, if any.
+  // A right-click on a card selects it (keeping the selection when it is part of
+  // it); on empty space the menu acts on the current selection, if any.
   function openNoteMenu(note: Note | null, x: number, y: number, text: string) {
-    if (note) setSelectedId(note.id)
-    setNoteMenu({ note: note ?? notes.find((item) => item.id === selectedId) ?? null, x, y, text })
+    let targets = selectedNotes
+    if (note && selection.size > 1 && selection.has(note.id)) {
+      setSelectedId(note.id)
+    } else if (note) {
+      selectOnly(note.id)
+      targets = [note]
+    }
+    setNoteMenu({ note: note ?? selectedNotes.find((item) => item.id === selectedId) ?? null, notes: targets, x, y, text })
   }
 
-  async function copyNote(note: Note) {
-    await tiny.clipboard.write({ text: noteToText(note) })
+  // Several notes are copied one after another, separated by a `---` line.
+  async function copyNotes(list: Note[]) {
+    if (list.length === 0) return
+    await tiny.clipboard.write({ text: list.map(noteToText).join('\n\n---\n\n') })
   }
 
   async function pasteAsNewNote() {
@@ -344,14 +437,15 @@ export default function App() {
     if (resize && !document.querySelector('dialog[open], .context-menu')) resizeNotes(resize, 'menu')
   }), [toggleColumn, resizeNotes, openNewNote])
 
-  async function exportNotes(scope: 'all' | 'listed') {
-    const ids = scope === 'all' ? [] : visibleNotes.map((note) => note.id)
-    if (scope === 'listed' && ids.length === 0) return
+  // `all`: every listed note (clear the filters to export the whole database).
+  async function exportNotes(scope: 'all' | 'selected', list: Note[] = scope === 'all' ? visibleNotes : selectedNotes) {
+    const ids = list.map((note) => note.id)
+    if (ids.length === 0) return
     const stamp = new Date().toISOString().slice(0, 10)
-    const path = await tiny.dialog.saveFile({ types: ['xml'], name: `notaro-${scope === 'all' ? 'all' : 'selected'}-${stamp}` })
+    const path = await tiny.dialog.saveFile({ types: ['xml'], name: `notaro-${scope}-${stamp}` })
     if (!path) return
     try {
-      const { count } = await tiny.api.call('exportNotes', { all: scope === 'all', ids, path }) as { count: number }
+      const { count } = await tiny.api.call('exportNotes', { ids, path }) as { count: number }
       await tiny.dialog.alert(`Exported ${count} ${count === 1 ? 'note' : 'notes'}.`, path)
     } catch (error) {
       await tiny.dialog.alert('Export failed.', error instanceof Error ? error.message : String(error))
@@ -377,8 +471,8 @@ export default function App() {
       await refresh()
       setSearchInput('')
       setSearch('')
-      setSelectedMonth(null)
-      setSelectedTag(tag)
+      setSelectedMonths([])
+      setSelectedTags([tag])
     } catch (error) {
       await tiny.dialog.alert('Import failed.', error instanceof Error ? error.message : String(error))
     }
@@ -433,12 +527,10 @@ export default function App() {
     fileEditCommands.current = {
       'file:import': () => void importNotes(),
       'file:exportAll': () => void exportNotes('all'),
-      'file:exportListed': () => void exportNotes('listed'),
+      'file:exportSelected': () => void exportNotes('selected'),
       'file:exit': () => void exitApp(),
-      'note:copy': () => {
-        const note = notes.find((item) => item.id === selectedId)
-        if (note) void copyNote(note)
-      },
+      'note:copy': () => void copyNotes(selectedNotes),
+      'note:selectAll': selectAllListed,
       'note:paste': () => void pasteAsNewNote(),
       'note:delete': deleteSelected,
       'tools:removeTag': () => void removeTagTool(),
@@ -452,14 +544,17 @@ export default function App() {
     fileEditCommands.current[id]?.()
   }), [])
 
-  const hasSelected = notes.some((item) => item.id === selectedId)
+  const selectedCount = selectedNotes.length
   const hasListed = visibleNotes.length > 0
   useEffect(() => {
-    void tiny.menu?.update?.('note:copy', { enabled: hasSelected })?.catch(() => {})
-    void tiny.menu?.update?.('note:delete', { enabled: hasSelected })?.catch(() => {})
-  }, [hasSelected])
+    const several = selectedCount > 1
+    void tiny.menu?.update?.('note:copy', { enabled: selectedCount > 0, label: several ? `Copy ${selectedCount} Notes` : 'Copy Note' })?.catch(() => {})
+    void tiny.menu?.update?.('note:delete', { enabled: selectedCount > 0, label: several ? `Delete ${selectedCount} Notes` : 'Delete Note' })?.catch(() => {})
+    void tiny.menu?.update?.('file:exportSelected', { enabled: selectedCount > 0, label: several ? `Export ${selectedCount} Selected…` : 'Export Selected…' })?.catch(() => {})
+  }, [selectedCount])
   useEffect(() => {
-    void tiny.menu?.update?.('file:exportListed', { enabled: hasListed })?.catch(() => {})
+    void tiny.menu?.update?.('file:exportAll', { enabled: hasListed })?.catch(() => {})
+    void tiny.menu?.update?.('note:selectAll', { enabled: hasListed })?.catch(() => {})
   }, [hasListed])
 
   function openEditNote(note: Note) {
@@ -474,8 +569,8 @@ export default function App() {
   function resetFilters() {
     setSearchInput('')
     setSearch('')
-    setSelectedTag('all')
-    setSelectedMonth(null)
+    setSelectedTags([])
+    setSelectedMonths([])
   }
 
   // The tag and calendar controls change the filter together with the Find text.
@@ -486,6 +581,18 @@ export default function App() {
     })
   }
 
+  // `all` clears the tag filter; Ctrl+click adds or removes one tag.
+  function pickTag(tag: string, toggle: boolean) {
+    const next = tag === 'all' ? (selectedTags.length === 0 ? selectedTags : []) : pickItem(selectedTags, tag, toggle)
+    if (next !== selectedTags) changeFilter(() => setSelectedTags(next))
+  }
+
+  // A click on the only selected month clears the month filter, as before.
+  function pickMonth(month: string, toggle: boolean) {
+    const next = pickItem(selectedMonths, month, toggle, true)
+    if (next !== selectedMonths) changeFilter(() => setSelectedMonths(next))
+  }
+
   // A `[text](#note-id)` link: select that note; when the filters hide it, clear them first.
   function openLinkedNote(id: number) {
     if (!notes.some((note) => note.id === id)) {
@@ -493,7 +600,7 @@ export default function App() {
       return
     }
     const show = () => {
-      setSelectedId(id)
+      selectOnly(id)
       revealSelected()
     }
     if (visibleNotes.some((note) => note.id === id)) show()
@@ -503,7 +610,7 @@ export default function App() {
     })
   }
 
-  const filtered = search !== '' || selectedTag !== 'all' || selectedMonth !== null
+  const filtered = search !== '' || selectedTags.length > 0 || selectedMonths.length > 0
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -531,22 +638,29 @@ export default function App() {
         if (!event.repeat) resizeNotes(event.shiftKey ? (grow ? 'all-grow' : 'all-shrink') : (grow ? 'note-grow' : 'note-shrink'), 'key')
       } else if (inEditor) {
         return
-      } else if (nav && !event.shiftKey && !event.altKey
-        // The Find field keeps Ctrl+Home/End for its text cursor.
-        && (!typing || (target?.id === 'find-input' && event.key !== 'Home' && event.key !== 'End'))) {
+      } else if (nav && !event.altKey
+        // The Find field keeps Ctrl+Home/End for its text cursor, and Ctrl+Shift+arrows for selecting words.
+        && (!typing || (target?.id === 'find-input' && !event.shiftKey && event.key !== 'Home' && event.key !== 'End'))) {
         event.preventDefault()
-        moveSelection(nav)
+        moveSelection(nav, event.shiftKey)
       } else if (event.key === 'Escape') {
         event.preventDefault()
-        if (filtered) {
+        if (selection.size > 1) {
+          selectOnly(selectedId)
+          revealSelected()
+        } else if (filtered) {
           guarded(resetFilters)
         } else {
-          if (!visibleNotes.some((note) => note.id === selectedId)) setSelectedId(visibleNotes[0]?.id ?? null)
+          if (!visibleNotes.some((note) => note.id === selectedId)) selectOnly(visibleNotes[0]?.id ?? null)
           revealSelected()
         }
         document.getElementById('notes-panel')?.focus({ preventScroll: true })
       } else if (typing || event.altKey) {
         return
+      } else if (commandKey(event) && !event.shiftKey && key === 'a') {
+        // Ctrl+A stays a page key, not a menu accelerator: text fields need it.
+        event.preventDefault()
+        selectAllListed()
       } else if (
         (event.key === 'Insert' && !event.ctrlKey && !event.shiftKey && !event.metaKey) ||
         (commandKey(event) && !event.shiftKey && key === 'n')) {
@@ -556,10 +670,10 @@ export default function App() {
         event.preventDefault()
         void pasteAsNewNote()
       } else if (commandKey(event) && !event.shiftKey && key === 'c') {
-        // Selected text copies natively; otherwise the whole selected note.
-        if (!selectedNote || !window.getSelection()?.isCollapsed) return
+        // Selected text copies natively; otherwise the whole selected note(s).
+        if (selectedNotes.length === 0 || !window.getSelection()?.isCollapsed) return
         event.preventDefault()
-        void copyNote(selectedNote)
+        void copyNotes(selectedNotes)
       } else if ((event.key === 'Enter' || event.key === 'F2') && selectedNote) {
         event.preventDefault()
         openEditNote(selectedNote)
@@ -573,12 +687,14 @@ export default function App() {
   })
 
   const menuNote = noteMenu?.note ?? null
+  const menuNotes = noteMenu?.notes ?? []
 
   return (
     <div className="app">
       <Toolbar
         search={searchInput}
         visibleCount={visibleNotes.length}
+        selectedCount={selection.size > 1 ? selectedNotes.length : 0}
         tagsVisible={tagsVisible}
         calendarVisible={calendarVisible}
         onToggleTags={() => toggleColumn('tags', 'click')}
@@ -609,24 +725,25 @@ export default function App() {
         }}
       />
       <div className="columns">
-        {tagsVisible && <TagsPanel tags={tags} selected={selectedTag} onSelect={(tag) => { if (tag !== selectedTag) changeFilter(() => setSelectedTag(tag)) }} />}
+        {tagsVisible && <TagsPanel tags={tags} selected={selectedTags} onSelect={pickTag} />}
         <main className="main">
           <NotesPanel
             ref={notesPanel}
             notes={visibleNotes}
             terms={terms}
             selectedId={selectedId}
+            selection={selection}
             revealGen={revealGen}
             firstMatchId={firstMatchId}
             bulkView={bulkView}
-            onSelect={(note) => setSelectedId((current) => current === note.id ? null : note.id)}
+            onSelect={selectNote}
             onEdit={openEditNote}
             onMenu={openNoteMenu}
             onTag={(note, tag) => {
               // The note's stored spelling, as listed in the tags column.
               const lower = tag.toLocaleLowerCase()
               const name = note.tags.find((item) => item.toLocaleLowerCase() === lower) ?? tag
-              if (name !== selectedTag) changeFilter(() => setSelectedTag(name))
+              pickTag(name, false)
             }}
             onNoteLink={openLinkedNote}
             editingId={editing?.note?.id ?? null}
@@ -646,7 +763,7 @@ export default function App() {
         </main>
         {calendarVisible && (
           <aside className="side">
-            <CalendarPanel groups={calendarGroups} selected={selectedMonth} onSelect={(month) => changeFilter(() => setSelectedMonth(month))} />
+            <CalendarPanel groups={calendarGroups} selected={selectedMonths} onSelect={pickMonth} />
           </aside>
         )}
       </div>
@@ -661,10 +778,12 @@ export default function App() {
             { label: 'Paste as Note', shortcut: 'Ctrl+V', onSelect: () => void pasteAsNewNote() },
             { separator: true },
             ...(noteMenu.text ? [{ label: 'Copy Selection', onSelect: () => void tiny.clipboard.write({ text: noteMenu.text }) }] : []),
-            { label: 'Copy Note', shortcut: 'Ctrl+C', disabled: !menuNote, onSelect: () => menuNote && void copyNote(menuNote) },
+            { label: menuNotes.length > 1 ? `Copy ${menuNotes.length} Notes` : 'Copy Note', shortcut: 'Ctrl+C', disabled: menuNotes.length === 0, onSelect: () => void copyNotes(menuNotes) },
             { label: 'Edit', shortcut: 'F2 or Enter', disabled: !menuNote, onSelect: () => menuNote && openEditNote(menuNote) },
+            { label: 'Select All', shortcut: 'Ctrl+A', disabled: visibleNotes.length === 0, onSelect: selectAllListed },
+            ...(menuNotes.length > 1 ? [{ label: `Export ${menuNotes.length} Notes…`, onSelect: () => void exportNotes('selected', menuNotes) }] : []),
             { separator: true },
-            { label: 'Delete', shortcut: 'Del', disabled: !menuNote, onSelect: () => menuNote && void deleteNote(menuNote) },
+            { label: menuNotes.length > 1 ? `Delete ${menuNotes.length} Notes` : 'Delete', shortcut: 'Del', disabled: menuNotes.length === 0, onSelect: () => void deleteNotes(menuNotes) },
           ]}
         />
       )}

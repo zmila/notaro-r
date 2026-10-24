@@ -7,7 +7,8 @@ import { noteViewInfo, stepNoteView, type BulkNoteView, type NoteView } from '..
 import type { Note } from '../types'
 
 interface NoteHandlers {
-  onSelect: (note: Note) => void
+  // toggle: Ctrl/Cmd+click adds the note to (or removes it from) the selection.
+  onSelect: (note: Note, toggle: boolean) => void
   onEdit: (note: Note) => void
   onMenu: (note: Note | null, x: number, y: number, text: string) => void
   onViewChange: (note: Note, view: NoteView) => void
@@ -19,6 +20,8 @@ interface NoteCardProps {
   note: Note
   terms: string[]
   selected: boolean
+  // The selection's current note (keyboard cursor), marked only while several are selected.
+  current: boolean
   firstMatch: boolean
   view: NoteView
   handlers: NoteHandlers
@@ -32,9 +35,9 @@ function selectedText(card: HTMLElement): string {
 
 // Memoized: with stable `handlers`, a card re-renders only when its own props
 // change, so selection changes and bulk view batches touch just a few cards.
-const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, view, handlers }: NoteCardProps) {
+const NoteCard = memo(function NoteCard({ note, terms, selected, current, firstMatch, view, handlers }: NoteCardProps) {
   const bodyRef = useRef<HTMLDivElement>(null)
-  const current = noteViewInfo(view)
+  const viewInfo = noteViewInfo(view)
   const next = noteViewInfo(stepNoteView(view, false))
   const body = useMemo(() => stripTagLine(note.body), [note.body])
 
@@ -52,9 +55,14 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
 
   return (
     <article
-      className={`note view-${view}${selected ? ' selected' : ''}`}
+      className={`note view-${view}${selected ? ' selected' : ''}${current ? ' current' : ''}`}
       data-note-id={note.id}
       onClick={(event) => {
+        // Ctrl+click anywhere in a card (links and tags too) picks the note.
+        if (event.ctrlKey || event.metaKey) {
+          handlers.onSelect(note, true)
+          return
+        }
         const linked = (event.target as Element).closest<HTMLElement>('.note-link')?.dataset.noteId
         if (linked && selectedText(event.currentTarget) === '') {
           handlers.onNoteLink(Number(linked))
@@ -70,7 +78,7 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
         const inText = (event.target as Element).closest('.note-text') !== null
         if (!inText) window.getSelection()?.removeAllRanges()
         else if (event.detail > 1 || selected || selectedText(event.currentTarget)) return
-        handlers.onSelect(note)
+        handlers.onSelect(note, false)
       }}
       onContextMenu={(event) => {
         // Shift+right-click keeps the browser's own menu (Inspect).
@@ -83,14 +91,14 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
         <button
           type="button"
           className="note-view"
-          title={`${current.label} (click: ${next.label.toLowerCase()}, Shift+click: back; selected note: Ctrl+plus/minus)`}
-          aria-label={`Note view: ${current.label}`}
+          title={`${viewInfo.label} (click: ${next.label.toLowerCase()}, Shift+click: back; selected note: Ctrl+plus/minus)`}
+          aria-label={`Note view: ${viewInfo.label}`}
           onClick={(event) => {
             event.stopPropagation()
             handlers.onViewChange(note, stepNoteView(view, event.shiftKey))
           }}
           onDoubleClick={(event) => event.stopPropagation()}
-        >{current.glyph}</button>
+        >{viewInfo.glyph}</button>
         <h3 className="note-title">{note.title}</h3>
         <time className="note-date">{noteDates(note)}</time>
       </div>
@@ -107,7 +115,7 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
 })
 
 export interface NotesPanelHandle {
-  // Change the selected note's view by `step` applied to its current view.
+  // Change the selected notes' views by `step` applied to each one's current view.
   stepSelected: (step: (view: NoteView) => NoteView) => void
 }
 
@@ -115,12 +123,15 @@ interface NotesPanelProps {
   ref?: Ref<NotesPanelHandle>
   notes: Note[]
   terms: string[]
+  /** the current note: keyboard cursor, scrolled into view */
   selectedId: number | null
+  /** all selected notes (includes selectedId) */
+  selection: ReadonlySet<number>
   firstMatchId: number | null
   bulkView: BulkNoteView
   /** bumped to scroll the selected note into view */
   revealGen?: number
-  onSelect: (note: Note) => void
+  onSelect: (note: Note, toggle: boolean) => void
   onEdit: (note: Note) => void
   onMenu: (note: Note | null, x: number, y: number, text: string) => void
   onTag: (note: Note, tag: string) => void
@@ -165,7 +176,7 @@ interface ViewOverride {
   gen: number
 }
 
-export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkView, revealGen = 0, onSelect, onEdit, onMenu, onTag, onNoteLink, editor, editingId = null }: NotesPanelProps) {
+export function NotesPanel({ ref, notes, terms, selectedId, selection, firstMatchId, bulkView, revealGen = 0, onSelect, onEdit, onMenu, onTag, onNoteLink, editor, editingId = null }: NotesPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const selectedIndex = notes.findIndex((note) => note.id === selectedId)
   // A keyboard jump (Ctrl+End) may select a note the progressive mount hasn't reached yet.
@@ -193,7 +204,7 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
   }, [])
 
   const [handlers] = useState<NoteHandlers>(() => ({
-    onSelect: (note) => latest.current.onSelect(note),
+    onSelect: (note, toggle) => latest.current.onSelect(note, toggle),
     onEdit: (note) => latest.current.onEdit(note),
     onMenu: (note, x, y, text) => latest.current.onMenu(note, x, y, text),
     onTag: (note, tag) => latest.current.onTag(note, tag),
@@ -223,9 +234,9 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
 
   useImperativeHandle(ref, () => ({
     stepSelected: (step) => {
-      const index = notes.findIndex((note) => note.id === selectedId)
-      if (index < 0) return
-      onViewChange(notes[index], step(viewOf(notes[index], index)))
+      notes.forEach((note, index) => {
+        if (selection.has(note.id)) onViewChange(note, step(viewOf(note, index)))
+      })
     },
   }))
 
@@ -250,7 +261,8 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
           key={note.id}
           note={note}
           terms={terms}
-          selected={note.id === selectedId}
+          selected={selection.has(note.id)}
+          current={selection.size > 1 && note.id === selectedId}
           firstMatch={note.id === firstMatchId}
           view={viewOf(note, index)}
           handlers={handlers}

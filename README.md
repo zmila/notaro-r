@@ -8,10 +8,10 @@ Notes support Markdown formatting.
 Currently implemented:
  - create note;
  - edit note in place: the note card turns into an editor (toolbar with Edit/Preview, OK, Cancel on top, then the title and the body; drag the body's bottom-right corner to resize it). One note is edited at a time; the pencil button next to N+ starts editing the selected note, or scrolls back to the note being edited. Actions that change which notes are shown or edited (tag/date/Find filters, new, paste, edit another note, delete) close the editor, asking `Discard unsaved changes?` first when there are unsaved edits; view toggles, sorting, copying and clicks or text selection in other notes keep it open;
- - delete note;
- - `File > Import…` / `Export All…` / `Export Selected…`: read or save notes as an XML file (see [Export and import](#export-and-import)); `File > Exit` quits (asking about unsaved edits first);
- - `Edit` menu: `New Note` (`Ctrl+N`), `Copy Note`, `Paste as Note`, `Delete Note` (act on the selected note; the keyboard shortcuts for copy/paste/delete work in the notes list, see below);
- - filtering by tag, date and text;
+ - delete note (or several selected notes at once);
+ - `File > Import…` / `Export All…` (the listed notes) / `Export Selected…`: read or save notes as an XML file (see [Export and import](#export-and-import)); `File > Exit` quits (asking about unsaved edits first);
+ - `Edit` menu: `New Note` (`Ctrl+N`), `Copy Note`, `Paste as Note`, `Select All`, `Delete Note` (act on the selected note(s), e.g. `Copy 3 Notes`; the keyboard shortcuts for copy/paste/delete work in the notes list, see below);
+ - filtering by tag, date and text; `Ctrl+click` picks several tags (notes with any of them) or several months; `all` stays pinned at the top of the tags column, selected months are marked `✓` and a year header shows how many of its months are selected (`✓2`);
  - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
  - links to other notes: typing `[[` in the editor shows a popup with notes (title, id and last-change date, so notes with the same title can be told apart; the most recently changed first), filtered by the text typed after `[[` (title start first, then title containing it, or the note id). Picking one replaces `[[…` with a Markdown link `[Note title](#note-234)`; its text can be edited freely, the id keeps it pointing at that note. Links are shown underlined; clicking one selects that note (clearing the filters if they hide it); a link to a deleted note says so. Note ids change on import, so links between imported notes don't survive an export/import round trip;
  - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
@@ -30,22 +30,27 @@ Currently implemented:
 Main screen:
 ![main screen](./docs/main_screen.png)
 
-Edit note:
+Edit note and insert tag:
 ![main screen](./docs/edit_note.png)
 
-Filtering:
+Filtering by tag and text:
 ![filtering](./docs/filtering.png)
 
 Import:
 ![import](./docs/import.png)
+
+Multi-select tags and monthes, Insert link:
+![insert_link](./docs/insert_link.png)
 
 About popup:
 ![about popup](./docs/about.png)
 
 ## Export and import
 
-`File > Export All…` saves every note; `File > Export Selected…` saves the notes currently
-listed (after the tag, date and Find filters), in list order. It is disabled when the list is empty.
+`File > Export All…` saves all notes currently listed (after the tag, date and Find filters),
+in list order; to export the whole database, clear the filters first (`Escape`). It is disabled
+when the list is empty. `File > Export Selected…` saves the selected note(s), in list order
+(also in the notes' right-click menu when several are selected).
 
 The app first shows a `Save As` dialog with a suggested name (`notaro-all-YYYY-MM-DD.xml` or
 `notaro-selected-YYYY-MM-DD.xml`), then writes the file and reports how many notes were exported.
@@ -124,19 +129,25 @@ that calls them.
 - `Ctrl+Shift+plus` / `Ctrl+Shift+minus`: the same for all notes (like the toolbar toggle).
 - `Ctrl+V`: open a new note titled `clipboard` with the clipboard text as its body.
   Review it, then save with `OK`.
-- `Ctrl+C`: copy the selected note (title, blank line, body). With text selected in a note,
+- `Ctrl+C`: copy the selected note (title, blank line, body); several selected notes are copied
+  one after another, separated by `---` lines. With text selected in a note,
   `Ctrl+C` (or `Ctrl+Insert`) copies just that text.
 - `Enter` or `F2`: edit the selected note (or double-click the note's header bar).
-- `Delete`: delete the selected note; the next note (or the previous one, at the end) gets selected.
-- `Escape`: reset filters (outside the note editor) and move the focus to the notes list,
-  keeping the selected note or selecting the top one.
+- `Delete`: delete the selected note(s), after one confirmation; the next note (or the previous one, at the end) gets selected.
+- `Escape`: with several notes selected, keep only the current one; otherwise reset filters
+  (outside the note editor) and move the focus to the notes list, keeping the selected note or selecting the top one.
 - `Ctrl+ArrowDown` / `Ctrl+ArrowUp`: select the next / previous note; a note off screen scrolls
   just into view (at the bottom when moving down, at the top when moving up).
 - `Ctrl+PageDown` / `Ctrl+PageUp`: move the selection 10 notes down / up.
 - `Ctrl+Home` / `Ctrl+End`: select the first / last note.
   (`Ctrl+ArrowUp/Down` and `Ctrl+PageUp/Down` also work from the Find field.)
-- Changing the sort keeps the selected note and scrolls to it; a filter that hides it selects
-  the top listed note instead.
+- Several notes: `Ctrl+click` adds a note to the selection or removes it; `Ctrl+Shift` with the
+  keys above extends the selection from where it started; `Ctrl+A` selects all listed notes
+  (also `Edit > Select All`). The current note has a dashed outline and the toolbar
+  shows `N of M`; a plain click or `Ctrl+arrow` selects one note again. `Ctrl+plus/minus`,
+  copy, delete and `File > Export Selected…` act on all selected notes.
+- Changing the sort keeps the selected notes and scrolls to the current one; a filter keeps
+  those still listed, or selects the top listed note.
 - `Ctrl+F`: focus and select the Find field.
 - Right-click a note or the empty list: menu with the commands above and their shortcuts
   (`ArrowUp`/`ArrowDown`, `Enter`, `Escape`); `Copy Selection` is added when text in the note is selected.
@@ -241,16 +252,6 @@ several lines
 ## TODO
 
 - add help - instruction how to use, with list of keyboard hotkeys
-- allow multi select:
-  - allow to click several tags (Ctrl+click)
-     - make "all" tags button always visible at top
-  - allow to click several monthes (Ctrl+click)
-     - highlight selected years and monthes more visible (add some char)
-  - allow to Ctrl+click to select several notes
-     - keyboard navigation (Ctrl+up or down) clears multi-selection and only top is selected
-     - Ctrl+Shift+ up or down selects neigbour notes
-     - Ctrl+A selects all visible
-     - add 3d Export all/filtered/*selected* notes.
 - find (and replace) while edit notes - new popup.
 - implement soft delete (changes in db) and "show deleted", "clear deleted".
 - implement history feature (list of visited notes with navigation back/forward as in browser). 

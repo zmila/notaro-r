@@ -7,6 +7,8 @@ export const CALENDAR_SHORTCUT = 'Ctrl+Shift+D'
 interface ToolbarProps {
   search: string
   visibleCount: number
+  // shown as "N of M" when several notes are selected
+  selectedCount: number
   tagsVisible: boolean
   calendarVisible: boolean
   onToggleTags: () => void
@@ -43,6 +45,7 @@ function PencilIcon() {
 export function Toolbar({
   search,
   visibleCount,
+  selectedCount,
   tagsVisible,
   calendarVisible,
   onToggleTags,
@@ -103,7 +106,7 @@ export function Toolbar({
             >×</button>
           )}
         </div>
-        <output className="visible-count" aria-live="polite">{visibleCount}</output>
+        <output className="visible-count" aria-live="polite" title={selectedCount > 1 ? `${selectedCount} of ${visibleCount} listed notes selected` : undefined}>{selectedCount > 1 ? `${selectedCount} of ${visibleCount}` : visibleCount}</output>
       </div>
       <SortControls {...sort} />
       <div className="toolbar-right">

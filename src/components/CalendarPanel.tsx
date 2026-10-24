@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { modifierToggle } from '../multiSelect'
 
 interface MonthGroup {
   year: string
@@ -7,8 +8,10 @@ interface MonthGroup {
 
 interface CalendarPanelProps {
   groups: MonthGroup[]
-  selected: string | null
-  onSelect: (month: string | null) => void
+  // `YYYY-MM` keys; empty: no month filter.
+  selected: readonly string[]
+  // toggle: Ctrl/Cmd+click adds or removes the month instead of picking only it.
+  onSelect: (month: string, toggle: boolean) => void
 }
 
 const MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june',
@@ -31,30 +34,35 @@ export function CalendarPanel({ groups, selected, onSelect }: CalendarPanelProps
     <div className="calendar">
       {groups.map((group) => {
         const open = expanded.has(group.year)
-        const hasSelected = selected?.startsWith(`${group.year}-`) ?? false
+        const picked = selected.filter((month) => month.startsWith(`${group.year}-`)).length
         return (
           <section className={`year${open ? ' open' : ''}`} key={group.year}>
             <button
               type="button"
-              className={`year-title${hasSelected ? ' has-selected' : ''}`}
+              className={`year-title${picked > 0 ? ' has-selected' : ''}`}
               aria-expanded={open}
-              title={`${open ? 'Collapse' : 'Expand'} ${group.year}`}
+              title={`${open ? 'Collapse' : 'Expand'} ${group.year}${picked > 0 ? ` (${picked} selected)` : ''}`}
               onClick={() => toggleYear(group.year)}
             >
               <span className="year-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
               {group.year}
+              {picked > 0 && <span className="year-picked">✓{picked > 1 ? picked : ''}</span>}
             </button>
             {open && (
               <ul className="months">
                 {group.months.map((month) => {
                   const key = `${group.year}-${month}`
+                  const isSelected = selected.includes(key)
                   return (
                     <li key={key}>
                       <button
                         type="button"
-                        className={`month${selected === key ? ' selected' : ''}`}
-                        onClick={() => onSelect(selected === key ? null : key)}
+                        className={`month${isSelected ? ' selected' : ''}`}
+                        title="Click: show this month only (again: all); Ctrl+click: add or remove it"
+                        aria-pressed={isSelected}
+                        onClick={(event) => onSelect(key, modifierToggle(event))}
                       >
+                        <span className="month-mark" aria-hidden="true">{isSelected ? '✓' : ''}</span>
                         {month} {MONTH_NAMES[Number(month) - 1]}
                       </button>
                     </li>

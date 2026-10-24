@@ -48,8 +48,9 @@ export function init(_app: TinyApp) {
     { title: 'File', items: [
       { id: 'file:import', label: 'Import…' },
       { separator: true },
+      // both export the listed notes (all of them, or the selected ones)
       { id: 'file:exportAll', label: 'Export All…' },
-      { id: 'file:exportListed', label: 'Export Selected…' },
+      { id: 'file:exportSelected', label: 'Export Selected…', enabled: false },
       { separator: true },
       { id: 'file:exit', label: 'Exit' },
     ] },
@@ -64,6 +65,8 @@ export function init(_app: TinyApp) {
       { separator: true },
       { id: 'note:copy', label: 'Copy Note', enabled: false },
       { id: 'note:paste', label: 'Paste as Note' },
+      // no Ctrl+A accelerator: text fields need it; the page handles the key
+      { id: 'note:selectAll', label: 'Select All' },
       { separator: true },
       { id: 'note:delete', label: 'Delete Note', enabled: false },
     ] },
@@ -248,8 +251,7 @@ function normalizeTags(tags: NoteInput['tags'] = []): string {
 // ---------------------------------------------------------------- export
 
 interface ExportInput {
-  /** true: every note; otherwise `ids`, written in the given order */
-  all?: boolean;
+  /** the notes to write, in this order */
   ids?: number[];
   /** the file chosen in the page's Save As dialog */
   path: string;
@@ -348,17 +350,26 @@ export const api: Record<string, TinyApiHandler> = {
     return { id };
   }),
 
+  // Deletes several notes in one transaction.
+  deleteNotes: withDb(({ ids = [] }: { ids?: number[] }) => {
+    db.exec('BEGIN');
+    try {
+      for (const id of ids) stmts.delete.run(Number(id));
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return { count: ids.length };
+  }),
+
   // Writes the notes as XML to `path`; returns how many were written.
   exportNotes: async (params, app) => {
     await ready;
-    const { all, ids = [], path } = params as ExportInput;
+    const { ids = [], path } = params as ExportInput;
     if (!path) throw new Error('no file chosen');
-    const notes: Note[] = stmts.list.all().map(rowToNote);
-    let picked = notes;
-    if (!all) {
-      const byId = new Map(notes.map((note) => [note.id, note]));
-      picked = ids.map((id) => byId.get(Number(id))).filter((note): note is Note => !!note);
-    }
+    const byId = new Map(stmts.list.all().map(rowToNote).map((note: Note) => [note.id, note]));
+    const picked = ids.map((id) => byId.get(Number(id))).filter((note): note is Note => !!note);
     const { version } = await app.info();
     const xml = notesXml(picked, version, stmts.now.all()[0].now);
     await tjs.writeFile(path, new TextEncoder().encode(xml));
