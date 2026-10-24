@@ -217,7 +217,8 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
     if (revealed.current === revealGen) return
     revealed.current = revealGen
     if (selectedId === null) return
-    panelRef.current?.querySelector(`[data-note-id="${selectedId}"]`)?.scrollIntoView({ block: 'nearest' })
+    // `:scope >` — note links inside card bodies carry `data-note-id` too.
+    panelRef.current?.querySelector(`:scope > article[data-note-id="${selectedId}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [revealGen, selectedId])
 
   useImperativeHandle(ref, () => ({

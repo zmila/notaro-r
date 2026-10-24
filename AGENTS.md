@@ -170,7 +170,7 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   listed note (disabled with none), or, while editing, calls `revealNoteEditor`
   (`noteEditorDom.ts`) to scroll to the editor.
 - Selection and scrolling: App bumps `revealGen` to have `NotesPanel` scroll the selected card
-  (`[data-note-id]`) into view with `block: 'nearest'` (`.notes` has `scroll-padding`). Filter and
+  (`:scope > article[data-note-id]` — note-link anchors in bodies carry `data-note-id` too) into view with `block: 'nearest'` (`.notes` has `scroll-padding`). Filter and
   sort changes are detected *during render* (`listKeys` state, React's "adjust state on prop
   change" pattern), so the filtered list never renders with a stale selection. `NotesPanel`
   mounts at least up to the selected index, so Ctrl+End works before the progressive mount ends.
