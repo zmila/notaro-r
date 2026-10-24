@@ -12,6 +12,7 @@ interface NoteHandlers {
   onMenu: (note: Note | null, x: number, y: number, text: string) => void
   onViewChange: (note: Note, view: NoteView) => void
   onTag: (note: Note, tag: string) => void
+  onNoteLink: (id: number) => void
 }
 
 interface NoteCardProps {
@@ -54,6 +55,11 @@ const NoteCard = memo(function NoteCard({ note, terms, selected, firstMatch, vie
       className={`note view-${view}${selected ? ' selected' : ''}`}
       data-note-id={note.id}
       onClick={(event) => {
+        const linked = (event.target as Element).closest<HTMLElement>('.note-link')?.dataset.noteId
+        if (linked && selectedText(event.currentTarget) === '') {
+          handlers.onNoteLink(Number(linked))
+          return
+        }
         const tag = (event.target as Element).closest<HTMLElement>('.note-tag')?.dataset.tag
         if (tag && selectedText(event.currentTarget) === '') {
           handlers.onTag(note, tag)
@@ -118,6 +124,8 @@ interface NotesPanelProps {
   onEdit: (note: Note) => void
   onMenu: (note: Note | null, x: number, y: number, text: string) => void
   onTag: (note: Note, tag: string) => void
+  /** a click on a `[text](#note-id)` link */
+  onNoteLink: (id: number) => void
   /** the open note editor, shown in place of its note's card (on top for a new note) */
   editor?: ReactNode
   editingId?: number | null
@@ -157,7 +165,7 @@ interface ViewOverride {
   gen: number
 }
 
-export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkView, revealGen = 0, onSelect, onEdit, onMenu, onTag, editor, editingId = null }: NotesPanelProps) {
+export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkView, revealGen = 0, onSelect, onEdit, onMenu, onTag, onNoteLink, editor, editingId = null }: NotesPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const selectedIndex = notes.findIndex((note) => note.id === selectedId)
   // A keyboard jump (Ctrl+End) may select a note the progressive mount hasn't reached yet.
@@ -168,9 +176,9 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
   // they were made after; a newer press overrides them as it reaches each card.
   const [overrides, setOverrides] = useState<ReadonlyMap<number, ViewOverride>>(() => new Map())
 
-  const latest = useRef({ onSelect, onEdit, onMenu, onTag, gen: bulkView.gen })
+  const latest = useRef({ onSelect, onEdit, onMenu, onTag, onNoteLink, gen: bulkView.gen })
   useLayoutEffect(() => {
-    latest.current = { onSelect, onEdit, onMenu, onTag, gen: bulkView.gen }
+    latest.current = { onSelect, onEdit, onMenu, onTag, onNoteLink, gen: bulkView.gen }
   })
 
   const onViewChange = useCallback((note: Note, view: NoteView) => {
@@ -189,6 +197,7 @@ export function NotesPanel({ ref, notes, terms, selectedId, firstMatchId, bulkVi
     onEdit: (note) => latest.current.onEdit(note),
     onMenu: (note, x, y, text) => latest.current.onMenu(note, x, y, text),
     onTag: (note, tag) => latest.current.onTag(note, tag),
+    onNoteLink: (id) => latest.current.onNoteLink(id),
     onViewChange,
   }))
 

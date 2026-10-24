@@ -72,6 +72,56 @@ export function extractTags(body: string): string[] {
   return tags
 }
 
+// Same-length masking for replaceTagInBody: code spans and link targets
+// can't hold real tags, but blanking them (like withoutCode does) would
+// shift character offsets. Replacing each char with 'x' keeps their length,
+// so match positions found in the masked line stay valid against the
+// original one, and '#' is destroyed so these spans never match as tags.
+const CODE_SPAN = /(`+)[^`]+?\1/g
+const LINK_TARGET = /\]\([^)]*\)/g
+
+function mask(line: string, pattern: RegExp): string {
+  return line.replace(pattern, (m) => 'x'.repeat(m.length))
+}
+
+// Rewrites every `#tag` in `body` (case-insensitive) to `#replacement`, or
+// removes it when `replacement` is null. Lines inside code fences, code
+// spans and link targets are left untouched (the same exclusions as
+// extractTags). A pure removal also eats one adjacent space (preferring the
+// one after the tag) so it doesn't leave a doubled space or a stray leading
+// one behind; a line left holding only whitespace is dropped entirely.
+export function replaceTagInBody(body: string, tag: string, replacement: string | null): string {
+  const target = key(tag)
+  const lines = body.split('\n')
+  const fenced = fencedLines(lines)
+  const modified: boolean[] = lines.map(() => false)
+  const newLines = lines.map((line, index) => {
+    if (fenced[index] || !line.includes('#')) return line
+    const masked = mask(mask(line, CODE_SPAN), LINK_TARGET)
+    const matches = [...masked.matchAll(tagPattern())].filter((match) => key(match[1]) === target)
+    if (matches.length === 0) return line
+    modified[index] = true
+    let result = ''
+    let last = 0
+    for (const match of matches) {
+      let start = match.index!
+      let end = start + match[0].length
+      if (replacement === null) {
+        if (line[end] === ' ' || line[end] === '\t') end += 1
+        else if (start > last && (line[start - 1] === ' ' || line[start - 1] === '\t')) start -= 1
+      }
+      result += line.slice(last, start) + (replacement ? `#${replacement}` : '')
+      last = end
+    }
+    return result + line.slice(last)
+  })
+  if (!modified.some(Boolean)) return body
+  if (replacement !== null) return newLines.join('\n')
+  const cleaned = newLines.filter((line, index) => !(modified[index] && line.trim() === '' && lines[index].trim() !== ''))
+  // A dropped line can leave behind a run of blank lines, or a dangling one at the end.
+  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '')
+}
+
 // An old tag stored apart from the body, made into a valid `#word`.
 function asTagWord(tag: string): string {
   return tag.trim().replace(new RegExp(`[^${WORD}.\\-]+`, 'gu'), '_').replace(new RegExp(`[^${WORD}]+$`, 'u'), '')

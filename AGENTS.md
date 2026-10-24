@@ -92,6 +92,31 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   (see the cast in `setupTray`).
 - The tinyjs CLI lives in `%LOCALAPPDATA%\tinyjs` (`cli.js`); read it to answer questions
   about build order or bridge behavior instead of guessing.
+- Mass actions: implemented but **not wired into any menu** (not needed in production yet,
+  kept for future reuse) — no `Tools` menu entry in `backend/main.ts`, but the handlers in
+  `App.tsx`'s `fileEditCommands` map (`tools:removeTag`/`tools:replaceTag`/`tools:clearUpdatedAt`)
+  and the backend `bulkUpdateNotes` API are left in place; re-adding the menu block (see the
+  comment left where it used to be) is enough to re-enable it. `src/massActions.ts` is a
+  generic harness —
+  `runMassAction(notes, fn)` calls a pure `(note) => partial | null` function over every
+  note from `listNotes` and keeps only the ones that actually changed (`null`/no-op both
+  skip). `updated_at` is **preserved** unless the function returns it explicitly — mass
+  edits shouldn't look like manual activity. Built-ins: `removeTagAction`,
+  `replaceTagAction` (both check the tag in the body *and* the legacy `tags` column, since
+  old notes may carry it only there, and rewrite the body via
+  `noteTags.ts#replaceTagInBody`), `clearUpdatedAtDriftAction` (resets `updated_at` to
+  `created_at`). `App.tsx`'s `runToolAction` does the UI side: `tiny.dialog.prompt` for
+  parameters → dry-run `runMassAction` against the current `notes` state for a count →
+  `tiny.dialog.confirm` → backend `bulkUpdateNotes` → `refresh()` → `tiny.dialog.alert`.
+  The backend endpoint takes an explicit `updated_at` per row (unlike `updateNote`, which
+  always bumps it to `datetime('now')`) and copies `notes.db` to
+  `notes.db.bak-<timestamp>` before writing, since there's no undo.
+- `replaceTagInBody` finds real tag occurrences per non-fenced line by masking code spans
+  and link targets with same-length `x` runs first (destroys any `#` there without
+  shifting offsets), then matches the real tag pattern on the masked line and slices the
+  original line at the same indices. A pure removal also eats one adjacent space (the one
+  after the tag, else the one before) so it doesn't leave a doubled space, and a line left
+  holding only whitespace is dropped.
 
 ## Frontend patterns
 
@@ -118,12 +143,21 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   `<span class="note-tag" data-tag>` inside `markdownHtml` (after DOMPurify, so it is cached);
   a click on one in a card calls `onTag`. DB rows from before keep tags only in the `tags`
   column; `App.openEditNote` appends them via `appendMissingTags` when such a note is opened.
-- Tag suggestions (`TagSuggest.tsx`): focus never leaves the textarea — `NoteEditor` drives the
+- Tag and note-link suggestions (`SuggestPopup.tsx`, generic `{ key, label, hint }` rows): focus never leaves the textarea — `NoteEditor` drives the
   popup from the body's keydown (`active` -1 until `Down`), opens/updates it on input
   (`refreshSuggest(body, true)`) and only updates/closes it on `onSelect` caret moves; a ref
   mirrors the open state because `onSelect` can run before the state update lands. The popup
   is portaled to `body` with `position: fixed` at `textareaCaretRect` (mirror-div caret
   measurement) and `preventDefault`s mousedown so the textarea keeps focus; textarea blur closes it.
+- Note links (`src/noteLinks.ts`): stored as plain Markdown `[text](#note-<id>)` — titles aren't
+  unique, and an in-page `#` href survives DOMPurify (a custom `note:` scheme would be stripped)
+  and is already skipped by tag extraction. `[[query` opens the popup (`Suggest.kind` `'link'`,
+  first row active at once; Esc remembers that `[[` in `dismissedLink` so typing on doesn't
+  reopen it); App passes `linkTargets` (notes by `updated_at` desc), the edited note is excluded.
+  `markNoteLinksHtml` (in `markdownHtml`, so cached) adds `class="note-link" data-note-id`;
+  `main.tsx` `preventDefault`s `#note-` clicks (no hash change), `NoteCard` calls
+  `onNoteLink` → `App.openLinkedNote` (select + reveal; `guarded` `resetFilters` if hidden;
+  alert for a missing id). Import assigns new ids, so links don't survive export/import.
 - In-place editing (`NoteEditor.tsx`): App holds one `EditSession` (`note` null = new note, the
   `initial` draft, a `key` that remounts the editor). The draft lives in the editor; it reports
   only dirty flips (`onDirtyChange` → `editDirty` ref), so typing never re-renders App.

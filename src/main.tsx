@@ -20,7 +20,11 @@ function openLinksExternally(event: MouseEvent) {
   const link = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
   if (!link) return
   const href = link.getAttribute('href') ?? ''
-  if (href.startsWith('#')) return
+  // In-page anchors work as usual; `#note-123` links are handled by the note cards.
+  if (href.startsWith('#')) {
+    if (href.startsWith('#note-')) event.preventDefault()
+    return
+  }
   event.preventDefault()
   if (/^(https?|mailto):/i.test(href)) void tiny.app.shell.open(link.href)
 }

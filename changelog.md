@@ -1,5 +1,11 @@
 # changelog
 
+## version 0.9.0, 2026-10-24
+### what's new
+- Implemented reference/link to other note: typing `[[` in the editor shows a popup with notes (title, id and date) filtered as you type; picking one inserts a Markdown link `[Note title](#note-234)`, shown underlined, and clicking it selects that note.
+
+---
+
 ## version 0.8.1, 2026-10-24
 ### what's new
 - Find: the list is filtered as you type or paste, once the text has 3 or more characters (ignoring surrounding spaces); the Find button is gone.

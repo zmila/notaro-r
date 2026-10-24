@@ -231,11 +231,15 @@ button { cursor: pointer; }
   border-radius: 3px;
   box-shadow: 0 3px 10px rgb(0 0 0 / 18%);
 }
-.tag-suggest-item { height: var(--tag-row); padding: 0 6px; overflow: hidden; color: var(--accent); line-height: var(--tag-row); white-space: nowrap; text-overflow: ellipsis; cursor: default; }
+.tag-suggest-item { display: flex; gap: 2ch; height: var(--tag-row); padding: 0 6px; overflow: hidden; color: var(--accent); line-height: var(--tag-row); white-space: nowrap; cursor: default; }
+.suggest-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.suggest-hint { flex: none; color: var(--muted); font-size: 11.5px; }
 .tag-suggest-item:hover { background: var(--bg-panel); }
 .tag-suggest-item.active { background: var(--head-sel); }
 .note:not(.editing) .note-tag { cursor: pointer; }
 .note:not(.editing) .note-tag:hover { text-decoration: underline; }
+.note-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
+.note-editor .note-link { cursor: default; }
 .note-match { padding: 0 1px; background: #fff3a6; border: 1px solid #d6bf4a; border-radius: 2px; }
 .note.selected { background: var(--note-sel); border-color: var(--accent); }
 .note.selected .note-head { background: var(--head-sel); border-bottom-color: var(--accent); }

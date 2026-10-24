@@ -9,6 +9,7 @@ import { TagsPanel } from './components/TagsPanel'
 import { noteToText, textToDraft } from './noteClipboard'
 import { revealNoteEditor } from './noteEditorDom'
 import { appendMissingTags, extractTags, withTagLine } from './noteTags'
+import { clearUpdatedAtDriftAction, removeTagAction, replaceTagAction, runMassAction } from './massActions'
 import { localStamp, parseNotaroXml } from './notesImport'
 import { DEFAULT_NOTE_VIEW, growNoteView, shrinkNoteView, type BulkNoteView, type NoteView } from './noteView'
 import type { Note, NoteDraft, SortDirection, SortField } from './types'
@@ -165,6 +166,9 @@ export default function App() {
 
   // Real tags only (without the `all` / `untagged` entries), for the editor's suggestions.
   const tagNames = useMemo(() => tags.slice(2).map((tag) => tag.name), [tags])
+
+  // Notes offered after `[[` in the editor: the most recently changed first.
+  const linkTargets = useMemo(() => [...notes].sort((a, b) => b.updated_at.localeCompare(a.updated_at)), [notes])
 
   const calendarGroups = useMemo(() => {
     const years = new Map<string, Set<string>>()
@@ -384,6 +388,45 @@ export default function App() {
     if (await leaveEditor()) void tiny.api.call('quitApp', {})
   }
 
+  // Shared flow for the Tools menu: dry-run the action against the current
+  // notes, confirm the affected count, persist, then refresh.
+  async function runToolAction(label: string, action: Parameters<typeof runMassAction>[1]) {
+    if (!await leaveEditor()) return
+    const updates = runMassAction(notes, action)
+    if (updates.length === 0) {
+      await tiny.dialog.alert(`${label}: no notes to update.`)
+      return
+    }
+    const plural = updates.length === 1 ? 'note' : 'notes'
+    const ok = await tiny.dialog.confirm(`${label}?`, { detail: `This will update ${updates.length} ${plural}.` })
+    if (!ok) return
+    try {
+      const { count, backup } = await tiny.api.call('bulkUpdateNotes', { updates }) as { count: number; backup: string | null }
+      await refresh()
+      await tiny.dialog.alert(`Updated ${count} ${count === 1 ? 'note' : 'notes'}.`, backup ? `Backup saved: ${backup}` : undefined)
+    } catch (error) {
+      await tiny.dialog.alert(`${label} failed.`, error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  async function removeTagTool() {
+    const tag = (await tiny.dialog.prompt('Remove tag (without #):'))?.trim()
+    if (!tag) return
+    await runToolAction(`Remove #${tag}`, removeTagAction(tag))
+  }
+
+  async function replaceTagTool() {
+    const oldTag = (await tiny.dialog.prompt('Replace tag (without #):'))?.trim()
+    if (!oldTag) return
+    const newTag = (await tiny.dialog.prompt(`Replace #${oldTag} with (without #):`))?.trim()
+    if (!newTag) return
+    await runToolAction(`Replace #${oldTag} with #${newTag}`, replaceTagAction(oldTag, newTag))
+  }
+
+  async function clearUpdatedAtTool() {
+    await runToolAction('Clear updated-at drift', clearUpdatedAtDriftAction())
+  }
+
   // File/Edit menu commands act on the latest state; one subscription reads it through a ref.
   const fileEditCommands = useRef<Record<string, () => void>>({})
   useEffect(() => {
@@ -398,6 +441,9 @@ export default function App() {
       },
       'note:paste': () => void pasteAsNewNote(),
       'note:delete': deleteSelected,
+      'tools:removeTag': () => void removeTagTool(),
+      'tools:replaceTag': () => void replaceTagTool(),
+      'tools:clearUpdatedAt': () => void clearUpdatedAtTool(),
     }
   })
 
@@ -437,6 +483,23 @@ export default function App() {
     guarded(() => {
       setSearch(effectiveSearch(searchInput))
       change()
+    })
+  }
+
+  // A `[text](#note-id)` link: select that note; when the filters hide it, clear them first.
+  function openLinkedNote(id: number) {
+    if (!notes.some((note) => note.id === id)) {
+      void tiny.dialog.alert(`Note ${id} does not exist.`, 'It may have been deleted.')
+      return
+    }
+    const show = () => {
+      setSelectedId(id)
+      revealSelected()
+    }
+    if (visibleNotes.some((note) => note.id === id)) show()
+    else guarded(() => {
+      resetFilters()
+      show()
     })
   }
 
@@ -565,6 +628,7 @@ export default function App() {
               const name = note.tags.find((item) => item.toLocaleLowerCase() === lower) ?? tag
               if (name !== selectedTag) changeFilter(() => setSelectedTag(name))
             }}
+            onNoteLink={openLinkedNote}
             editingId={editing?.note?.id ?? null}
             editor={editing && (
               <NoteEditor
@@ -575,6 +639,7 @@ export default function App() {
                 onCancel={closeEditor}
                 onDirtyChange={onEditorDirty}
                 tags={tagNames}
+                linkTargets={linkTargets}
               />
             )}
           />

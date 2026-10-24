@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { MarkdownContent } from './MarkdownContent'
 import { NoteTags } from './NoteTags'
-import { TagSuggest } from './TagSuggest'
+import { SuggestPopup, type SuggestItem } from './SuggestPopup'
 import { noteDates } from '../noteDates'
+import { findLinkTargets, noteLabel, noteLinkMarkdown, noteLinkPrefixAt } from '../noteLinks'
 import { extractTags, stripTagLine, tagPrefixAt } from '../noteTags'
 import { textareaCaretRect, type CaretRect } from '../textareaCaret'
 import {
@@ -25,16 +26,24 @@ interface NoteEditorProps {
   onDirtyChange: (dirty: boolean) => void
   /** existing tags, offered while a `#tag` is typed */
   tags: string[]
+  /** notes offered after `[[` (a link to another note), in this order */
+  linkTargets: Note[]
 }
 
 const MIN_BODY_HEIGHT = 120
 // Typed characters after `#` before existing tags are offered.
 const MIN_TAG_PREFIX = 2
 
+// Tags shown in the popup are short; note titles get more room.
+const TAG_POPUP_CHARS = 20
+const LINK_POPUP_CHARS = 48
+
 interface Suggest {
-  /** where the typed tag word starts (after `#`) */
-  start: number
-  items: string[]
+  /** tags after `#word`, or notes to link after `[[` */
+  kind: 'tag' | 'link'
+  /** the text position the popup is shown at (the `#` or the `[[`) */
+  anchorAt: number
+  items: SuggestItem[]
   /** highlighted item; -1 until Down moves into the list */
   active: number
   anchor: CaretRect
@@ -56,7 +65,7 @@ function applyFormatEdit(body: HTMLTextAreaElement, format: FormatCommand) {
 
 // The note card in edit mode: a toolbar on top, then the title and the body
 // sharing one border. The body's bottom-right corner resizes it.
-export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tags }: NoteEditorProps) {
+export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tags, linkTargets }: NoteEditorProps) {
   const cardRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -70,7 +79,9 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
   const [suggest, setSuggestState] = useState<Suggest | null>(null)
   // Mirrors `suggest` synchronously: onSelect can run before the state lands.
   const suggestOpen = useRef(false)
-  const insertingTag = useRef(false)
+  const inserting = useRef(false)
+  // The `[[` (its position) whose popup Esc closed; -1 for none.
+  const dismissedLink = useRef(-1)
   // Shared by the body and the preview, so switching keeps the size.
   const [height, setHeight] = useState<number | undefined>(undefined)
   const dirty = draft.title !== initial.title || draft.body !== initial.body
@@ -155,42 +166,76 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
     setSuggestState(next)
   }
 
-  // Offer existing tags for the `#tag` at the caret. Typing may open the popup;
-  // caret moves (`open` false) only update or close it.
+  // Offer notes to link for the `[[query` at the caret, else existing tags for
+  // the `#tag` there. Typing may open the popup; caret moves (`open` false)
+  // only update or close it.
   function refreshSuggest(body: HTMLTextAreaElement, open: boolean) {
     if (!open && !suggestOpen.current) return
-    const token = body.selectionStart === body.selectionEnd ? tagPrefixAt(body.value, body.selectionStart) : null
-    const prefix = token?.prefix.toLocaleLowerCase() ?? ''
-    const items = token && prefix.length >= MIN_TAG_PREFIX
-      ? tags.filter((tag) => tag.toLocaleLowerCase().startsWith(prefix))
-      : []
-    if (!token || items.length === 0 || (items.length === 1 && items[0].toLocaleLowerCase() === prefix)) {
+    const next = body.selectionStart === body.selectionEnd ? suggestAt(body.value, body.selectionStart) : null
+    if (!next) {
       if (suggestOpen.current) setSuggest(null)
       return
     }
-    const anchor = textareaCaretRect(body, token.start - 1)
+    const anchor = textareaCaretRect(body, next.anchorAt)
     suggestOpen.current = true
     setSuggestState((current) => {
-      const kept = current && current.active >= 0 ? items.indexOf(current.items[current.active]) : -1
-      return { start: token.start, items, anchor, active: current && current.active >= 0 ? Math.max(0, kept) : -1 }
+      // Keep the highlighted item while it is still listed. The link popup
+      // highlights its first note at once ([[ asks for it); the tag popup waits for Down.
+      const kept = current && current.kind === next.kind && current.active >= 0
+        ? next.items.findIndex((item) => item.key === current.items[current.active]?.key)
+        : -1
+      const active = kept >= 0 ? kept : (next.kind === 'link' || (current && current.active >= 0) ? 0 : -1)
+      return { ...next, anchor, active }
     })
   }
 
-  function insertTag(tag: string) {
+  function suggestAt(value: string, caret: number): Omit<Suggest, 'anchor' | 'active'> | null {
+    const link = noteLinkPrefixAt(value, caret)
+    if (link && link.start !== dismissedLink.current) {
+      dismissedLink.current = -1
+      const items = findLinkTargets(linkTargets, link.query, note?.id ?? null).map((target) => ({
+        key: String(target.id),
+        label: noteLabel(target),
+        hint: `${target.id} · ${target.updated_at.slice(0, 10)}`,
+      }))
+      return items.length > 0 ? { kind: 'link', anchorAt: link.start, items } : null
+    }
+    if (!link) dismissedLink.current = -1
+    const token = link ? null : tagPrefixAt(value, caret)
+    const prefix = token?.prefix.toLocaleLowerCase() ?? ''
+    const matches = token && prefix.length >= MIN_TAG_PREFIX
+      ? tags.filter((tag) => tag.toLocaleLowerCase().startsWith(prefix))
+      : []
+    if (!token || matches.length === 0 || (matches.length === 1 && matches[0].toLocaleLowerCase() === prefix)) return null
+    return { kind: 'tag', anchorAt: token.start - 1, items: matches.map((tag) => ({ key: tag, label: tag })) }
+  }
+
+  function replaceInBody(body: HTMLTextAreaElement, from: number, to: number, text: string) {
+    inserting.current = true
+    try {
+      applyEdit(body, { from, to, text, selectionStart: from + text.length, selectionEnd: from + text.length })
+    } finally {
+      inserting.current = false
+    }
+    setDraft((current) => ({ ...current, body: body.value }))
+  }
+
+  function pickSuggestion(index: number) {
     const body = bodyRef.current
+    const item = suggest?.items[index]
+    const kind = suggest?.kind
     setSuggest(null)
-    if (!body) return
+    if (!body || !item) return
+    if (kind === 'link') {
+      const token = noteLinkPrefixAt(body.value, body.selectionStart)
+      const target = linkTargets.find((candidate) => String(candidate.id) === item.key)
+      if (token && target) replaceInBody(body, token.start, token.end, noteLinkMarkdown(target))
+      return
+    }
     const token = tagPrefixAt(body.value, body.selectionStart)
     if (!token) return
     const space = /\s/.test(body.value[token.end] ?? '') ? '' : ' '
-    const caret = token.start + tag.length + space.length
-    insertingTag.current = true
-    try {
-      applyEdit(body, { from: token.start, to: token.end, text: tag + space, selectionStart: caret, selectionEnd: caret })
-    } finally {
-      insertingTag.current = false
-    }
-    setDraft((current) => ({ ...current, body: body.value }))
+    replaceInBody(body, token.start, token.end, item.key + space)
   }
 
   // Keys for the open popup; true when handled.
@@ -198,13 +243,16 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
     if (!suggest || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return false
     const last = suggest.items.length - 1
     const move = (active: number) => setSuggest({ ...suggest, active })
-    if (event.key === 'Escape') setSuggest(null)
-    else if (event.key === 'ArrowDown') move(Math.min(last, suggest.active + 1))
+    if (event.key === 'Escape') {
+      // Typing on after this `[[` should not bring the notes back.
+      if (suggest.kind === 'link') dismissedLink.current = suggest.anchorAt
+      setSuggest(null)
+    } else if (event.key === 'ArrowDown') move(Math.min(last, suggest.active + 1))
     else if (suggest.active < 0) return false
     else if (event.key === 'ArrowUp') move(suggest.active - 1)
     else if (event.key === 'PageDown') move(Math.min(last, suggest.active + 5))
     else if (event.key === 'PageUp') move(Math.max(0, suggest.active - 5))
-    else if (event.key === 'Enter') insertTag(suggest.items[suggest.active])
+    else if (event.key === 'Enter') pickSuggestion(suggest.active)
     else return false
     event.preventDefault()
     event.stopPropagation()
@@ -218,7 +266,7 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
     const follow = (event: Event) => {
       const body = bodyRef.current
       if (!body || (event.target instanceof Element && event.target.closest('.tag-suggest'))) return
-      setSuggestState((current) => current && { ...current, anchor: textareaCaretRect(body, current.start - 1) })
+      setSuggestState((current) => current && { ...current, anchor: textareaCaretRect(body, current.anchorAt) })
     }
     window.addEventListener('scroll', follow, true)
     window.addEventListener('resize', follow)
@@ -276,7 +324,7 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
       })
     }
     setDraft((current) => ({ ...current, body: body.value }))
-    if (!insertingTag.current && !renumbering.current) refreshSuggest(body, !inputType.startsWith('history'))
+    if (!inserting.current && !renumbering.current) refreshSuggest(body, !inputType.startsWith('history'))
   }
 
   function applyFormat(body: HTMLTextAreaElement, format: FormatCommand) {
@@ -367,7 +415,7 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
           ref={bodyRef}
           className="editor-body"
           value={draft.body}
-          placeholder="note text… (#tags anywhere)"
+          placeholder="note text… (#tags anywhere, [[ links another note)"
           style={{ height }}
           onChange={bodyChange}
           onKeyDown={bodyKeyDown}
@@ -376,7 +424,13 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
         />
       )}
       {suggest && !preview && (
-        <TagSuggest tags={suggest.items} active={suggest.active} anchor={suggest.anchor} onPick={insertTag} />
+        <SuggestPopup
+          items={suggest.items}
+          active={suggest.active}
+          anchor={suggest.anchor}
+          maxChars={suggest.kind === 'link' ? LINK_POPUP_CHARS : TAG_POPUP_CHARS}
+          onPick={pickSuggestion}
+        />
       )}
     </article>
   )

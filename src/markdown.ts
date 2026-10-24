@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import { markNoteLinksHtml } from './noteLinks'
 import { linkTagsHtml } from './noteTags'
 
 const MARKDOWN_CACHE_LIMIT = 2000
@@ -8,7 +9,7 @@ const markdownCache = new Map<string, string>()
 export function markdownHtml(value: string): string {
   const cached = markdownCache.get(value)
   if (cached !== undefined) return cached
-  const html = linkTagsHtml(DOMPurify.sanitize(marked.parse(value, { breaks: true, async: false })))
+  const html = markNoteLinksHtml(linkTagsHtml(DOMPurify.sanitize(marked.parse(value, { breaks: true, async: false }))))
   if (markdownCache.size >= MARKDOWN_CACHE_LIMIT) {
     markdownCache.delete(markdownCache.keys().next().value!)
   }

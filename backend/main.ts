@@ -37,6 +37,7 @@ interface UpdateNoteInput extends NoteInput {
 }
 
 let db: Database;
+let dbPath = '';
 let stmts: Record<string, any> = {};
 let ready = Promise.resolve();
 
@@ -93,6 +94,9 @@ export function init(_app: TinyApp) {
       { separator: true },
       { id: 'format:clear', label: 'Clear Formatting', key: 'd' },
     ] },
+    // Mass actions (Remove/Replace Tag, Clear Updated-at Drift) are implemented
+    // in src/massActions.ts + the bulkUpdateNotes API below, but not wired into
+    // any menu — not needed in production yet; see AGENTS.md "Mass actions".
     { title: 'Help', items: [{ id: 'about', label: 'About Notaro' }] },
   ]);
   setupTray(_app);
@@ -102,7 +106,8 @@ export function init(_app: TinyApp) {
   // async IIFE and let api calls await a readiness promise.
   ready = (async () => {
     await tjs.makeDir(tjs.cwd, { recursive: true });
-    db = new Database(tjs.cwd + '/notes.db');
+    dbPath = tjs.cwd + '/notes.db';
+    db = new Database(dbPath);
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS note (
@@ -128,6 +133,11 @@ export function init(_app: TinyApp) {
     );
     stmts.update = db.prepare(
       `UPDATE note SET title = ?, body = ?, tags = ?, updated_at = datetime('now') WHERE id = ?`
+    );
+    // Mass actions set updated_at explicitly (preserved or deliberately changed by
+    // the processing function) instead of always bumping it to now.
+    stmts.bulkSet = db.prepare(
+      `UPDATE note SET title = ?, body = ?, tags = ?, updated_at = ? WHERE id = ?`
     );
     stmts.delete = db.prepare(`DELETE FROM note WHERE id = ?`);
     stmts.count = db.prepare(`SELECT COUNT(*) AS n FROM note`);
@@ -267,6 +277,26 @@ interface ImportNote {
   updated_at?: string;
 }
 
+// ---------------------------------------------------------------- mass actions
+
+interface BulkUpdate {
+  id: number;
+  title?: string;
+  body?: string;
+  tags?: string[];
+  updated_at: string;
+}
+
+// A `notes.db` copy taken right before a mass action writes, since there is
+// no undo. Nothing else writes to the file between the read and the copy:
+// the caller does this before opening the write transaction.
+async function backupDb(): Promise<string> {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = `${dbPath}.bak-${stamp}`;
+  await tjs.writeFile(backupPath, await tjs.readFile(dbPath));
+  return backupPath;
+}
+
 // 'yyyy-mm-dd' or 'yyyy-mm-dd HH:MM[:SS]' (a 'T' separator is accepted) → the DB's 'yyyy-mm-dd HH:MM:SS'.
 function validDate(value: unknown): string | null {
   const match = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})(:\d{2})?)?$/.exec(String(value ?? '').trim());
@@ -359,4 +389,31 @@ export const api: Record<string, TinyApiHandler> = {
     }
     return { count: notes.length };
   }),
+
+  // Generic mass-action persistence: src/massActions.ts runs a processing
+  // function over all notes in the page and hands the changed ones here.
+  // Each row carries its own updated_at (preserved or deliberately changed
+  // by the processing function) rather than always bumping it to now.
+  bulkUpdateNotes: async ({ updates = [] }: { updates?: BulkUpdate[] }) => {
+    await ready;
+    if (updates.length === 0) return { count: 0, backup: null };
+    const backup = await backupDb();
+    db.exec('BEGIN');
+    try {
+      for (const update of updates) {
+        stmts.bulkSet.run(
+          String(update.title ?? '').trim(),
+          String(update.body ?? ''),
+          normalizeTags(update.tags ?? []),
+          update.updated_at,
+          update.id,
+        );
+      }
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return { count: updates.length, backup };
+  },
 }

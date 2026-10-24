@@ -3,21 +3,29 @@ import { createPortal } from 'react-dom'
 import type { CaretRect } from '../textareaCaret'
 
 const VISIBLE_ROWS = 5
-const MAX_WIDTH_CHARS = 20
 
-interface TagSuggestProps {
-  tags: string[]
+export interface SuggestItem {
+  key: string
+  label: string
+  /** dimmed text after the label (e.g. a note's id and date) */
+  hint?: string
+}
+
+interface SuggestPopupProps {
+  items: SuggestItem[]
   /** highlighted row; -1 while the keyboard is still in the textarea */
   active: number
   anchor: CaretRect
-  onPick: (tag: string) => void
+  /** the popup's width limit, in characters */
+  maxChars: number
+  onPick: (index: number) => void
 }
 
-// Existing tags matching the one being typed, under (or above) the caret.
-// It never takes the focus: the editor drives it from the textarea's keys.
-export function TagSuggest({ tags, active, anchor, onPick }: TagSuggestProps) {
+// Existing tags (or notes to link) matching what is typed, under (or above)
+// the caret. It never takes the focus: the editor drives it from the textarea's keys.
+export function SuggestPopup({ items, active, anchor, maxChars, onPick }: SuggestPopupProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const longest = Math.min(MAX_WIDTH_CHARS, Math.max(...tags.map((tag) => tag.length)))
+  const longest = Math.min(maxChars, Math.max(...items.map((item) => item.label.length + (item.hint ? item.hint.length + 2 : 0))))
 
   useLayoutEffect(() => {
     const popup = ref.current
@@ -27,7 +35,7 @@ export function TagSuggest({ tags, active, anchor, onPick }: TagSuggestProps) {
     const top = below + height <= window.innerHeight - 4 ? below : Math.max(4, anchor.top - height - 2)
     popup.style.top = `${top}px`
     popup.style.left = `${Math.max(4, Math.min(anchor.left, window.innerWidth - width - 4))}px`
-  }, [anchor, tags])
+  }, [anchor, items])
 
   useLayoutEffect(() => {
     const popup = ref.current
@@ -37,7 +45,7 @@ export function TagSuggest({ tags, active, anchor, onPick }: TagSuggestProps) {
     else if (row.offsetTop + row.offsetHeight > popup.scrollTop + popup.clientHeight) {
       popup.scrollTop = row.offsetTop + row.offsetHeight - popup.clientHeight
     }
-  }, [active, tags])
+  }, [active, items])
 
   return createPortal(
     <div
@@ -45,7 +53,7 @@ export function TagSuggest({ tags, active, anchor, onPick }: TagSuggestProps) {
       className="tag-suggest"
       role="listbox"
       style={{
-        width: `calc(${longest + 1}ch + 14px${tags.length > VISIBLE_ROWS ? ' + 12px' : ''})`,
+        width: `calc(${longest + 1}ch + 14px${items.length > VISIBLE_ROWS ? ' + 12px' : ''})`,
         maxHeight: `calc(${VISIBLE_ROWS} * var(--tag-row) + 2px)`,
       }}
       // Keep the focus (and caret) in the textarea; it also lets the
@@ -56,15 +64,18 @@ export function TagSuggest({ tags, active, anchor, onPick }: TagSuggestProps) {
       }}
       onClick={(event) => event.stopPropagation()}
     >
-      {tags.map((tag, index) => (
+      {items.map((item, index) => (
         <div
-          key={tag}
+          key={item.key}
           role="option"
           aria-selected={index === active}
           className={`tag-suggest-item${index === active ? ' active' : ''}`}
-          title={tag.length > MAX_WIDTH_CHARS ? tag : undefined}
-          onClick={() => onPick(tag)}
-        >{tag}</div>
+          title={item.label.length + (item.hint ? item.hint.length + 2 : 0) > maxChars ? item.label : undefined}
+          onClick={() => onPick(index)}
+        >
+          <span className="suggest-label">{item.label}</span>
+          {item.hint && <span className="suggest-hint">{item.hint}</span>}
+        </div>
       ))}
     </div>,
     document.body,

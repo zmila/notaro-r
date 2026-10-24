@@ -13,6 +13,7 @@ Currently implemented:
  - `Edit` menu: `New Note` (`Ctrl+N`), `Copy Note`, `Paste as Note`, `Delete Note` (act on the selected note; the keyboard shortcuts for copy/paste/delete work in the notes list, see below);
  - filtering by tag, date and text;
  - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
+ - links to other notes: typing `[[` in the editor shows a popup with notes (title, id and last-change date, so notes with the same title can be told apart; the most recently changed first), filtered by the text typed after `[[` (title start first, then title containing it, or the note id). Picking one replaces `[[…` with a Markdown link `[Note title](#note-234)`; its text can be edited freely, the id keeps it pointing at that note. Links are shown underlined; clicking one selects that note (clearing the filters if they hide it); a link to a deleted note says so. Note ids change on import, so links between imported notes don't survive an export/import round trip;
  - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
  - collapsible tags and calendar columns: toggle buttons `#` and calendar icon at the right end of the toolbar (pressed = column shown), `View` menu, `Ctrl+Shift+T` / `Ctrl+Shift+D`; the state is remembered;
  - calendar years are collapsed on start; click a year header to show or hide its months
@@ -83,6 +84,29 @@ A UTF-8 XML file:
   - `tags`: the note's tags without `#`, separated by spaces.
   - The note body, as Markdown text in a `CDATA` section. A `]]>` inside the body is split across two `CDATA` sections, so XML parsers read it back unchanged.
 
+## Mass actions (not exposed in the UI)
+
+A generic "mass action" tool exists in code but is **not wired into any menu**, so it isn't
+reachable from the app today; it's kept for future reuse. It iterates every note, calls a
+pure processing function `(note) => partialUpdate | null` on each one (`null` skips the
+note), and writes back only the notes that changed, each keeping its own `updated_at`
+(preserved unless the function changes it — a mass edit shouldn't look like the user edited
+the note). Before writing, it backs up `notes.db` to `notes.db.bak-<timestamp>`, since there
+is no undo.
+
+Three built-in actions ship with the harness:
+
+- **Remove Tag**: deletes `#tag` from every note that has it (in the body or, for notes
+  saved before tags lived in the body, the database's tags column).
+- **Replace Tag**: renames `#oldTag` to `#newTag` the same way.
+- **Clear Updated-at Drift**: resets `updated_at` back to `created_at` on notes where
+  ordinary edits made them diverge.
+
+See `src/massActions.ts` (the harness and built-ins), `src/noteTags.ts#replaceTagInBody`
+(the body rewrite), the backend's `bulkUpdateNotes` API in `backend/main.ts` (persistence
+and backup), and the `AGENTS.md` "Mass actions" notes for how to re-enable a `Tools` menu
+that calls them.
+
 ## Keyboard shortcuts
 
 ### Global
@@ -143,6 +167,9 @@ A UTF-8 XML file:
   (it follows further typing). `Down` moves into the list, `Up`/`Down`/`PgUp`/`PgDn` pick a tag,
   `Enter` inserts it (or click one with the mouse), `Esc` or a click elsewhere closes the popup.
   `Up` on the first tag returns to the text.
+- Typing `[[` shows a popup with notes to link (see above), the first one highlighted;
+  further typing filters it. `Up`/`Down`/`PgUp`/`PgDn` pick a note, `Enter` (or a click) inserts
+  the link, `Esc` closes the popup for this `[[`.
 
 ### Formatting the note body
 
@@ -213,6 +240,17 @@ several lines
 
 ## TODO
 
+- add help - instruction how to use, with list of keyboard hotkeys
+- allow multi select:
+  - allow to click several tags (Ctrl+click)
+     - make "all" tags button always visible at top
+  - allow to click several monthes (Ctrl+click)
+     - highlight selected years and monthes more visible (add some char)
+  - allow to Ctrl+click to select several notes
+     - keyboard navigation (Ctrl+up or down) clears multi-selection and only top is selected
+     - Ctrl+Shift+ up or down selects neigbour notes
+     - Ctrl+A selects all visible
+     - add 3d Export all/filtered/*selected* notes.
 - find (and replace) while edit notes - new popup.
 - implement soft delete (changes in db) and "show deleted", "clear deleted".
 - implement history feature (list of visited notes with navigation back/forward as in browser). 

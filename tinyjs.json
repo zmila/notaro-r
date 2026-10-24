@@ -3,7 +3,7 @@
   "title": "Notaro",
   "size": "1020x680",
   "id": "zmi.la.notaro",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "backend": "backend/main.ts",
   "about": "menu",
   "frontend": {
