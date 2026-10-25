@@ -58,6 +58,20 @@ interface EditSession {
 
 const MIN_SEARCH_LENGTH = 3
 
+// Help > Keyboard Shortcuts (F1): a separate, non-modal window; opening it
+// again just focuses it. Its page renders README.md's shortcut list.
+function openShortcutsWindow() {
+  void tiny.win.open('shortcuts', {
+    page: 'shortcuts.html',
+    title: 'Notaro — Keyboard Shortcuts',
+    size: '760x640',
+    minSize: '420x300',
+    chrome: { menu: false },
+  })?.catch((error: unknown) => {
+    void tiny.dialog.alert('Cannot open the shortcuts window.', error instanceof Error ? error.message : String(error))
+  })
+}
+
 const NO_IDS: ReadonlySet<number> = new Set()
 
 // Text shorter than 3 characters (ignoring surrounding whitespace) doesn't filter.
@@ -429,6 +443,7 @@ export default function App() {
 
   useEffect(() => tiny.menu.on((id) => {
     if (id === 'about') setAboutOpen(true)
+    if (id === 'help:shortcuts') openShortcutsWindow()
     // Ctrl+N arrives as a native menu accelerator (WebView2 swallows the key).
     if (id === 'note:new' && !document.querySelector('dialog[open], .context-menu')) openNewNote()
     if (id === 'view:tags') toggleColumn('tags', 'menu')
@@ -615,6 +630,11 @@ export default function App() {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (aboutOpen || noteMenu) return
+      if (event.key === 'F1' && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+        event.preventDefault()
+        openShortcutsWindow()
+        return
+      }
       const target = event.target as HTMLElement | null
       const typing = target?.matches('input, textarea, select') ?? false
       // The editor handles its own keys (Esc, Ctrl+Enter, formatting); only

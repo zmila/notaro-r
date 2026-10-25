@@ -6,6 +6,11 @@ import type { Note } from './types'
 const NOTE_HREF = /^#note-(\d+)$/
 // `[[` and the query typed after it, up to the caret, on one line.
 const LINK_PREFIX = /\[\[([^[\]\n]*)$/
+// What may follow the caret inside `[[query]]`: the rest of the query and `]]`;
+// without a `]]`, the rest of the word.
+const LINK_REST = /^(?:[^[\]\n]*\]\]|[^[\]\s]*)/
+// A finished note link on one line; group 1 is the (escaped) label.
+const NOTE_LINK = /\[((?:\\.|[^\\\]\n])*)\]\(#note-\d+\)/g
 
 export function noteLinkHref(id: number): string {
   return `#note-${id}`
@@ -16,14 +21,28 @@ export function noteLinkId(href: string): number | null {
   return match ? Number(match[1]) : null
 }
 
-// The note reference being typed at `caret`: `start` is at `[[`, `end` also
-// covers a `]]` right after the caret, `query` is the text after `[[`.
+// The note reference at `caret`, as text to replace (`start`–`end`) and the
+// `query` to look notes up by (the text before the caret). Either a `[[query`
+// being typed (`end` also covers the rest up to a following `]]`, or of the word), or the label
+// of a finished `[Label](#note-N)` link with the caret in it (`start`–`end`
+// covers the whole link, so picking a note retargets it).
 export function noteLinkPrefixAt(value: string, caret: number): { start: number; end: number; query: string } | null {
   const lineStart = value.lastIndexOf('\n', caret - 1) + 1
   const match = LINK_PREFIX.exec(value.slice(lineStart, caret))
-  if (!match) return null
-  const end = value.startsWith(']]', caret) ? caret + 2 : caret
-  return { start: caret - match[0].length, end, query: match[1] }
+  if (match) {
+    const rest = LINK_REST.exec(value.slice(caret))?.[0].length ?? 0
+    return { start: caret - match[0].length, end: caret + rest, query: match[1] }
+  }
+  const lineEnd = value.indexOf('\n', caret)
+  const line = value.slice(lineStart, lineEnd < 0 ? value.length : lineEnd)
+  for (const link of line.matchAll(NOTE_LINK)) {
+    const start = lineStart + (link.index ?? 0)
+    const labelEnd = start + 1 + link[1].length
+    if (caret <= start || caret > labelEnd) continue
+    const query = value.slice(start + 1, caret).replace(/\\(.)/g, '$1')
+    return { start, end: start + link[0].length, query }
+  }
+  return null
 }
 
 // What a note is called in the popup and in a new link.

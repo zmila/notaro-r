@@ -1,0 +1,50 @@
+:root {
+  color-scheme: light;
+  --border: #d8dde4;
+  --bg: #fff;
+  --bg-head: #e3eaf3;
+  --text: #1f2328;
+  --muted: #5d6570;
+  --accent: #2c5d9b;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  cursor: default;
+}
+
+.shortcuts { max-width: 900px; margin: 0 auto; padding: 16px 20px 28px; }
+.shortcuts h1 { margin: 0 0 4px; font-size: 20px; }
+.shortcuts h2 {
+  margin: 22px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent);
+  font-size: 16px;
+}
+.shortcuts p { margin: 6px 0; color: var(--muted); }
+
+.shortcuts table { width: 100%; border-collapse: collapse; }
+.shortcuts tr:nth-child(even) { background: #f7f9fb; }
+.shortcuts th, .shortcuts td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.shortcuts th { width: 32%; font-weight: normal; }
+.shortcuts td.text { color: var(--muted); }
+
+.shortcuts code {
+  font: 12.5px Consolas, "SFMono-Regular", monospace;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-head);
+  white-space: nowrap;
+}
+.shortcuts td code { white-space: normal; }

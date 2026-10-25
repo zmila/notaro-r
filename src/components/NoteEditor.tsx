@@ -31,8 +31,8 @@ interface NoteEditorProps {
 }
 
 const MIN_BODY_HEIGHT = 120
-// Typed characters after `#` before existing tags are offered.
-const MIN_TAG_PREFIX = 2
+// Typed characters after `#` or `[[` (or in a link label) before the popup shows.
+const MIN_QUERY = 1
 
 // Tags shown in the popup are short; note titles get more room.
 const TAG_POPUP_CHARS = 20
@@ -41,8 +41,10 @@ const LINK_POPUP_CHARS = 48
 interface Suggest {
   /** tags after `#word`, or notes to link after `[[` */
   kind: 'tag' | 'link'
-  /** the text position the popup is shown at (the `#` or the `[[`) */
+  /** the text position the popup is shown at (the `#`, the `[[` or the link's `[`) */
   anchorAt: number
+  /** highlight the first item at once (a `[[` query); otherwise wait for Down */
+  eager: boolean
   items: SuggestItem[]
   /** highlighted item; -1 until Down moves into the list */
   active: number
@@ -179,12 +181,13 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
     const anchor = textareaCaretRect(body, next.anchorAt)
     suggestOpen.current = true
     setSuggestState((current) => {
-      // Keep the highlighted item while it is still listed. The link popup
-      // highlights its first note at once ([[ asks for it); the tag popup waits for Down.
+      // Keep the highlighted item while it is still listed. A `[[` popup
+      // highlights its first note at once ([[ asks for it); the tag popup and
+      // one over a finished link's label wait for Down, so Enter stays a newline.
       const kept = current && current.kind === next.kind && current.active >= 0
         ? next.items.findIndex((item) => item.key === current.items[current.active]?.key)
         : -1
-      const active = kept >= 0 ? kept : (next.kind === 'link' || (current && current.active >= 0) ? 0 : -1)
+      const active = kept >= 0 ? kept : (next.eager || (current && current.active >= 0) ? 0 : -1)
       return { ...next, anchor, active }
     })
   }
@@ -193,21 +196,23 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
     const link = noteLinkPrefixAt(value, caret)
     if (link && link.start !== dismissedLink.current) {
       dismissedLink.current = -1
+      if (link.query.trim().length < MIN_QUERY) return null
       const items = findLinkTargets(linkTargets, link.query, note?.id ?? null).map((target) => ({
         key: String(target.id),
         label: noteLabel(target),
         hint: `${target.id} · ${target.updated_at.slice(0, 10)}`,
       }))
-      return items.length > 0 ? { kind: 'link', anchorAt: link.start, items } : null
+      const eager = value.startsWith('[[', link.start)
+      return items.length > 0 ? { kind: 'link', anchorAt: link.start, eager, items } : null
     }
     if (!link) dismissedLink.current = -1
     const token = link ? null : tagPrefixAt(value, caret)
     const prefix = token?.prefix.toLocaleLowerCase() ?? ''
-    const matches = token && prefix.length >= MIN_TAG_PREFIX
+    const matches = token && prefix.length >= MIN_QUERY
       ? tags.filter((tag) => tag.toLocaleLowerCase().startsWith(prefix))
       : []
     if (!token || matches.length === 0 || (matches.length === 1 && matches[0].toLocaleLowerCase() === prefix)) return null
-    return { kind: 'tag', anchorAt: token.start - 1, items: matches.map((tag) => ({ key: tag, label: tag })) }
+    return { kind: 'tag', anchorAt: token.start - 1, eager: false, items: matches.map((tag) => ({ key: tag, label: tag })) }
   }
 
   function replaceInBody(body: HTMLTextAreaElement, from: number, to: number, text: string) {

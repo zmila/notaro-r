@@ -91,6 +91,14 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   must return a new array each call, or React sees no change after the import.
 - `app.paths` is a function since tinyjs 0.57, but the bundled `backend/tiny.d.ts` predates it
   (see the cast in `setupTray`).
+- Help > Keyboard Shortcuts (id `help:shortcuts`, page key `F1`) opens a non-modal second window
+  with `tiny.win.open('shortcuts', { page: 'shortcuts.html', chrome: { menu: false } })` (same id
+  again focuses it). `shortcuts.html` is a second Vite input (`build.rolldownOptions.input` in
+  `vite.config.ts`); a relative `page` resolves against the dev URL in `tinyjs dev` and the dist
+  folder in builds. Its content is README.md's `## Keyboard shortcuts` section, imported with `?raw`
+  and parsed by `src/shortcutsDoc.ts`: `###` headings become sections, items of the form
+  ``- `keys`: text`` become rows (no `: ` in the first 60 chars → a full-width row). Keep that format
+  when editing the README section.
 - The tinyjs CLI lives in `%LOCALAPPDATA%\tinyjs` (`cli.js`); read it to answer questions
   about build order or bridge behavior instead of guessing.
 - Mass actions: implemented but **not wired into any menu** (not needed in production yet,
@@ -153,8 +161,13 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
 - Note links (`src/noteLinks.ts`): stored as plain Markdown `[text](#note-<id>)` — titles aren't
   unique, and an in-page `#` href survives DOMPurify (a custom `note:` scheme would be stripped)
   and is already skipped by tag extraction. `[[query` opens the popup (`Suggest.kind` `'link'`,
-  first row active at once; Esc remembers that `[[` in `dismissedLink` so typing on doesn't
+  `eager`: first row active at once; Esc remembers that `[[` in `dismissedLink` so typing on doesn't
   reopen it); App passes `linkTargets` (notes by `updated_at` desc), the edited note is excluded.
+  Both popups need `MIN_QUERY` (1) character after `#`/`[[`. They open from any non-undo input
+  (typing, paste, delete), so editing inside an existing `#tag` or `[[query` reopens them;
+  `noteLinkPrefixAt` also matches the label of a finished `[label](#note-N)` with the caret in
+  it (query = unescaped label before the caret, range = the whole link, not `eager`, so Enter
+  stays a newline until Down).
   `markNoteLinksHtml` (in `markdownHtml`, so cached) adds `class="note-link" data-note-id`;
   `main.tsx` `preventDefault`s `#note-` clicks (no hash change), `NoteCard` calls
   `onNoteLink` → `App.openLinkedNote` (select + reveal; `guarded` `resetFilters` if hidden;

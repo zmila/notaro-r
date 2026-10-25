@@ -13,7 +13,7 @@ Currently implemented:
  - `Edit` menu: `New Note` (`Ctrl+N`), `Copy Note`, `Paste as Note`, `Select All`, `Delete Note` (act on the selected note(s), e.g. `Copy 3 Notes`; the keyboard shortcuts for copy/paste/delete work in the notes list, see below);
  - filtering by tag, date and text; `Ctrl+click` picks several tags (notes with any of them) or several months; `all` stays pinned at the top of the tags column, selected months are marked `✓` and a year header shows how many of its months are selected (`✓2`);
  - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
- - links to other notes: typing `[[` in the editor shows a popup with notes (title, id and last-change date, so notes with the same title can be told apart; the most recently changed first), filtered by the text typed after `[[` (title start first, then title containing it, or the note id). Picking one replaces `[[…` with a Markdown link `[Note title](#note-234)`; its text can be edited freely, the id keeps it pointing at that note. Links are shown underlined; clicking one selects that note (clearing the filters if they hide it); a link to a deleted note says so. Note ids change on import, so links between imported notes don't survive an export/import round trip;
+ - links to other notes: typing `[[` and a character in the editor shows a popup with notes (title, id and last-change date, so notes with the same title can be told apart; the most recently changed first), filtered by the text typed after `[[` (title start first, then title containing it, or the note id). Picking one replaces `[[…` with a Markdown link `[Note title](#note-234)`; its text can be edited freely, the id keeps it pointing at that note. Links are shown underlined; clicking one selects that note (clearing the filters if they hide it); a link to a deleted note says so. Note ids change on import, so links between imported notes don't survive an export/import round trip;
  - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
  - collapsible tags and calendar columns: toggle buttons `#` and calendar icon at the right end of the toolbar (pressed = column shown), `View` menu, `Ctrl+Shift+T` / `Ctrl+Shift+D`; the state is remembered;
  - calendar years are collapsed on start; click a year header to show or hide its months
@@ -23,7 +23,8 @@ Currently implemented:
  - tray icon (letter N): minimizing or closing the window with the `X` button hides it to the tray, `Alt+F4` quits the app; left click on the icon shows/hides it, right click opens a menu with `Show / Hide` and `Quit`;
  - app icon (thin N, `assets/icon.png`) in the window title bar and taskbar, embedded into the exe by `tinyjs build`;
  - global shortcut `Ctrl+Alt+F11` shows/hides the app from anywhere;
- - `Help > About Notaro` popup showing the current version and release date (taken from the top section of `changelog.md`, `## version X.Y.Z, YYYY-MM-DD`).
+ - `Help > About Notaro` popup showing the current version and release date (taken from the top section of `changelog.md`, `## version X.Y.Z, YYYY-MM-DD`);
+ - `Help > Keyboard Shortcuts` (or `F1`) opens a separate window with the shortcut tables below (rendered from this README's `Keyboard shortcuts` section).
 
 ## Screenshots
 
@@ -31,7 +32,7 @@ Main screen:
 ![main screen](./docs/main_screen.png)
 
 Edit note and insert tag:
-![main screen](./docs/edit_note.png)
+![edit note](./docs/edit_note.png)
 
 Filtering by tag and text:
 ![filtering](./docs/filtering.png)
@@ -40,10 +41,13 @@ Import:
 ![import](./docs/import.png)
 
 Multi-select tags and monthes, Insert link:
-![insert_link](./docs/insert_link.png)
+![insert link](./docs/insert_link.png)
 
 About popup:
 ![about popup](./docs/about.png)
+
+Keyboard shortcuts window:
+![keyboard shortcuts](./docs/keyboard_shortcuts.png)
 
 ## Export and import
 
@@ -118,6 +122,7 @@ that calls them.
 
 - `Ctrl+Alt+F11`: show the app (also restores it from the tray), or hide it to the tray when it is focused.
 - `Alt+F4`: quit the app (the `X` button only hides it to the tray).
+- `F1`: open the keyboard shortcuts window (also `Help > Keyboard Shortcuts`); `Escape` closes it.
 
 ### Browsing notes
 
@@ -174,13 +179,18 @@ that calls them.
 - Numbered lists renumber themselves when an item is added, removed or moved; only the
   list being edited changes, and it keeps its starting number. `Ctrl+Z` undoes the
   renumbering first, then the edit.
-- Typing `#` and two or more letters shows a popup with existing tags starting with them
-  (it follows further typing). `Down` moves into the list, `Up`/`Down`/`PgUp`/`PgDn` pick a tag,
+- Typing `#` and a letter shows a popup with existing tags starting with the text typed
+  so far (it follows further typing). The same happens after pasting such text, and after
+  typing or deleting inside an existing `#tag` (the tag is matched by its part before the
+  cursor, and picking one replaces the whole tag). `Down` moves into the list, `Up`/`Down`/`PgUp`/`PgDn` pick a tag,
   `Enter` inserts it (or click one with the mouse), `Esc` or a click elsewhere closes the popup.
   `Up` on the first tag returns to the text.
-- Typing `[[` shows a popup with notes to link (see above), the first one highlighted;
-  further typing filters it. `Up`/`Down`/`PgUp`/`PgDn` pick a note, `Enter` (or a click) inserts
+- Typing `[[` and a character shows a popup with notes to link (see above), the first one highlighted;
+  further typing filters it (pasting `[[text` works too). `Up`/`Down`/`PgUp`/`PgDn` pick a note, `Enter` (or a click) inserts
   the link, `Esc` closes the popup for this `[[`.
+- Typing or deleting inside the text of an existing note link `[Note title](#note-234)` shows the
+  same popup, filtered by the text before the cursor; here `Down` moves into the list first
+  (so `Enter` still makes a new line), and picking a note replaces the whole link.
 
 ### Formatting the note body
 
@@ -251,7 +261,6 @@ several lines
 
 ## TODO
 
-- add help - instruction how to use, with list of keyboard hotkeys
 - find (and replace) while edit notes - new popup.
 - implement soft delete (changes in db) and "show deleted", "clear deleted".
 - implement history feature (list of visited notes with navigation back/forward as in browser). 

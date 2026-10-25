@@ -1,5 +1,11 @@
 # changelog
 
+## version 0.11.0, 2026-10-25
+### what's new
+- Help - keyboard shortcuts: `Help > Keyboard Shortcuts` (or `F1`) opens a separate window with tables of all keyboard shortcuts.
+
+---
+
 ## version 0.10.0, 2026-10-24
 ### what's new
 - Multi-select for tags: Ctrl+click picks several tags (notes having any of them); `all` stays pinned at the top of the tags column.

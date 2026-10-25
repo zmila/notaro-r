@@ -100,7 +100,12 @@ export function init(_app: TinyApp) {
     // Mass actions (Remove/Replace Tag, Clear Updated-at Drift) are implemented
     // in src/massActions.ts + the bulkUpdateNotes API below, but not wired into
     // any menu — not needed in production yet; see AGENTS.md "Mass actions".
-    { title: 'Help', items: [{ id: 'about', label: 'About Notaro' }] },
+    { title: 'Help', items: [
+      // opens a window from the page (no accelerator: `key` always adds Ctrl; F1 is a page key)
+      { id: 'help:shortcuts', label: 'Keyboard Shortcuts' },
+      { separator: true },
+      { id: 'about', label: 'About Notaro' },
+    ] },
   ]);
   setupTray(_app);
   
