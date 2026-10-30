@@ -190,6 +190,11 @@ export default function App() {
     ]
   }, [notes])
 
+  // A selected tag that no note carries any more (its notes deleted or retagged) is
+  // dropped from the filter; with none left, `all` is selected. Find and the calendar stay.
+  const liveSelectedTags = selectedTags.filter((name) => tags.some((tag) => tag.name === name && tag.count > 0))
+  if (liveSelectedTags.length !== selectedTags.length) setSelectedTags(liveSelectedTags)
+
   // Real tags only (without the `all` / `untagged` entries), for the editor's suggestions.
   const tagNames = useMemo(() => tags.slice(2).map((tag) => tag.name), [tags])
 
@@ -402,7 +407,15 @@ export default function App() {
       : visibleNotes.slice(indexes.at(-1)! + 1).find(kept) ?? visibleNotes.slice(0, indexes[0]).findLast(kept) ?? null
     await tiny.api.call('deleteNotes', { ids: [...ids] })
     await refresh()
-    if ([...selection].some((id) => ids.has(id))) selectOnly(neighbor?.id ?? null)
+    if ([...selection].some((id) => ids.has(id))) {
+      if (neighbor) selectOnly(neighbor.id)
+      else {
+        // Nothing left in the list; a filter reset (the last notes of a tag) may have picked a note already.
+        selectRange.current = null
+        setSelectedId((current) => current != null && ids.has(current) ? null : current)
+        setMultiIds(NO_IDS)
+      }
+    }
     revealSelected()
     document.getElementById('notes-panel')?.focus({ preventScroll: true })
   }
@@ -493,6 +506,59 @@ export default function App() {
     }
   }
 
+  async function applyDbInfo(info: { name: string }) {
+    try { await tiny.win?.setTitle?.(`Notaro - ${info.name}`) } catch { /* plain browser */ }
+  }
+
+  useEffect(() => {
+    void (async () => {
+      try { await applyDbInfo(await tiny.api.call('dbInfo', {}) as { name: string }) } catch { /* no backend */ }
+    })()
+  }, [])
+
+  function resetViewState() {
+    setSearchInput('')
+    setSearch('')
+    setSelectedMonths([])
+    setSelectedTags([])
+    setSelectedId(null)
+  }
+
+  async function openDatabase() {
+    if (!await leaveEditor()) return
+    const path = await tiny.dialog.openFile({ types: ['db', 'sqlite', 'sqlite3'] })
+    if (!path) return
+    try {
+      const info = await tiny.api.call('openDb', { path }) as { name: string }
+      await refresh()
+      resetViewState()
+      await applyDbInfo(info)
+    } catch (error) {
+      await tiny.dialog.alert('Open failed.', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  async function saveDatabaseAs() {
+    const info = await tiny.api.call('dbInfo', {}) as { name: string }
+    const path = await tiny.dialog.saveFile({ types: ['db'], name: info.name })
+    if (!path) return
+    try {
+      await tiny.api.call('saveDbAs', { path })
+      await tiny.dialog.alert('Database copy saved.', path)
+    } catch (error) {
+      await tiny.dialog.alert('Save failed.', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  async function reloadNotes() {
+    if (!await leaveEditor()) return
+    try {
+      await refresh()
+    } catch (error) {
+      await tiny.dialog.alert('Reload failed.', error instanceof Error ? error.message : String(error))
+    }
+  }
+
   async function exitApp() {
     if (await leaveEditor()) void tiny.api.call('quitApp', {})
   }
@@ -540,6 +606,9 @@ export default function App() {
   const fileEditCommands = useRef<Record<string, () => void>>({})
   useEffect(() => {
     fileEditCommands.current = {
+      'file:open': () => void openDatabase(),
+      'file:saveAs': () => void saveDatabaseAs(),
+      'file:reload': () => void reloadNotes(),
       'file:import': () => void importNotes(),
       'file:exportAll': () => void exportNotes('all'),
       'file:exportSelected': () => void exportNotes('selected'),
@@ -658,6 +727,15 @@ export default function App() {
         if (!event.repeat) resizeNotes(event.shiftKey ? (grow ? 'all-grow' : 'all-shrink') : (grow ? 'note-grow' : 'note-shrink'), 'key')
       } else if (inEditor) {
         return
+      } else if (target?.id === 'find-input' && event.key === 'ArrowDown'
+        && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+        // Leave the Find field for the first listed note, so Enter/Delete/arrows act on notes.
+        const first = visibleNotes[0]
+        if (!first) return
+        event.preventDefault()
+        selectOnly(first.id)
+        revealSelected()
+        document.getElementById('notes-panel')?.focus({ preventScroll: true })
       } else if (nav && !event.altKey
         // The Find field keeps Ctrl+Home/End for its text cursor, and Ctrl+Shift+arrows for selecting words.
         && (!typing || (target?.id === 'find-input' && !event.shiftKey && event.key !== 'Home' && event.key !== 'End'))) {

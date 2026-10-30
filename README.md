@@ -9,9 +9,10 @@ Currently implemented:
  - create note;
  - edit note in place: the note card turns into an editor (toolbar with Edit/Preview, OK, Cancel on top, then the title and the body; drag the body's bottom-right corner to resize it). One note is edited at a time; the pencil button next to N+ starts editing the selected note, or scrolls back to the note being edited. Actions that change which notes are shown or edited (tag/date/Find filters, new, paste, edit another note, delete) close the editor, asking `Discard unsaved changes?` first when there are unsaved edits; view toggles, sorting, copying and clicks or text selection in other notes keep it open;
  - delete note (or several selected notes at once);
+ - `File > Open Database…` / `Save Database As…` / `Reload`: switch to another database file, save a copy of the current one, or re-read the notes from it (open and reload ask about unsaved edits first); the window title shows the database file name (`Notaro - notes.db`);
  - `File > Import…` / `Export All…` (the listed notes) / `Export Selected…`: read or save notes as an XML file (see [Export and import](#export-and-import)); `File > Exit` quits (asking about unsaved edits first);
  - `Edit` menu: `New Note` (`Ctrl+N`), `Copy Note`, `Paste as Note`, `Select All`, `Delete Note` (act on the selected note(s), e.g. `Copy 3 Notes`; the keyboard shortcuts for copy/paste/delete work in the notes list, see below);
- - filtering by tag, date and text; `Ctrl+click` picks several tags (notes with any of them) or several months; `all` stays pinned at the top of the tags column, selected months are marked `✓` and a year header shows how many of its months are selected (`✓2`);
+ - filtering by tag, date and text; `Ctrl+click` picks several tags (notes with any of them) or several months; `all` stays pinned at the top of the tags column, selected months are marked `✓` and a year header shows how many of its months are selected (`✓2`); a selected tag that no note has any more (its last notes deleted or retagged) leaves the filter, and with none left `all` is selected again (the Find and date filters stay);
  - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
  - links to other notes: typing `[[` and a character in the editor shows a popup with notes (title, id and last-change date, so notes with the same title can be told apart; the most recently changed first), filtered by the text typed after `[[` (title start first, then title containing it, or the note id). Picking one replaces `[[…` with a Markdown link `[Note title](#note-234)`; its text can be edited freely, the id keeps it pointing at that note. Links are shown underlined; clicking one selects that note (clearing the filters if they hide it); a link to a deleted note says so. Note ids change on import, so links between imported notes don't survive an export/import round trip;
  - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
@@ -48,6 +49,21 @@ About popup:
 
 Keyboard shortcuts window:
 ![keyboard shortcuts](./docs/keyboard_shortcuts.png)
+
+Toolbar:
+![toolbar](./docs/toolbar.png)
+1. New note button (`Ctrl+N` or `Ins`).
+2. Edit button: edits the selected note (`Enter` or `F2`).
+3. Filter field: shows only notes that contain any of the entered words (`Ctrl+F`).
+4. Note counter: the number of listed notes, or "selected of listed" when several notes are selected.
+5. Sort drop-down: by updated date, created date, or note title.
+6. Sort order button: 🔼 ascending, 🔽 descending.
+7. Toggle button to show or hide the tags panel on the left (`Ctrl+Shift+T`).
+8. Toggle button to show or hide the calendar panel on the right (`Ctrl+Shift+D`).
+9. Note size toggle for all notes, with three states: `▔` title only, `▀` preview (5 lines), `█` full note.
+10. Tags panel: click a tag to show the notes with that tag; `Ctrl+Click` selects several tags. The top item, "all", clears the tag filter.
+11. Calendar panel: lists the months in which notes were created, grouped by year. Click a month to show only that month's notes; `Ctrl+Click` selects several months.
+12. Notes area: each note card has a clickable size toggle `▀`, a title, the "updated — created" dates at the top, and its tags at the bottom.
 
 ## Export and import
 
@@ -154,6 +170,8 @@ that calls them.
 - Changing the sort keeps the selected notes and scrolls to the current one; a filter keeps
   those still listed, or selects the top listed note.
 - `Ctrl+F`: focus and select the Find field.
+- `ArrowDown` in the Find field: select the first listed note and move the focus to the notes list,
+  so `Enter`, `Delete` and the other keys act on notes.
 - Right-click a note or the empty list: menu with the commands above and their shortcuts
   (`ArrowUp`/`ArrowDown`, `Enter`, `Escape`); `Copy Selection` is added when text in the note is selected.
 - Note text can be selected with the mouse (drag, double-click a word).
@@ -261,7 +279,11 @@ several lines
 
 ## TODO
 
+- update readme/help with information about toolbar: image with numbers over icons/controls and below it numbered list with description of what each control do
 - find (and replace) while edit notes - new popup.
 - implement soft delete (changes in db) and "show deleted", "clear deleted".
+- show stats page (popup) with list of tags and count of notes in each, and list of calendar (years/monthes) with count of notes in each;
 - implement history feature (list of visited notes with navigation back/forward as in browser). 
+- create save/load filter (or "view") - the combination of tags/months/filter text to be able to remember current view and to reapply it later
 - persist settings in DB (new table `settings`).
+

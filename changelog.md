@@ -1,5 +1,11 @@
 # changelog
 
+## version 0.12.0, 2026-10-30
+### what's new
+- File menu: `Open Database…`, `Save Database As…` and `Reload` items; the window title shows the database file name.
+
+---
+
 ## version 0.11.0, 2026-10-25
 ### what's new
 - Help - keyboard shortcuts: `Help > Keyboard Shortcuts` (or `F1`) opens a separate window with tables of all keyboard shortcuts.

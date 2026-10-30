@@ -46,6 +46,10 @@ export function init(_app: TinyApp) {
   _app.menu.set([
     // Ids reach the page through tiny.menu.on; it owns the note actions.
     { title: 'File', items: [
+      { id: 'file:open', label: 'Open Database…' },
+      { id: 'file:saveAs', label: 'Save Database As…' },
+      { id: 'file:reload', label: 'Reload' },
+      { separator: true },
       { id: 'file:import', label: 'Import…' },
       { separator: true },
       // both export the listed notes (all of them, or the selected ones)
@@ -114,9 +118,27 @@ export function init(_app: TinyApp) {
   // async IIFE and let api calls await a readiness promise.
   ready = (async () => {
     await tjs.makeDir(tjs.cwd, { recursive: true });
-    dbPath = tjs.cwd + '/notes.db';
-    db = new Database(dbPath);
+    openDb(tjs.cwd + '/notes.db', false);
+  })();
+}
 
+// Opens `path` and prepares the statements. An opened (not default) file must
+// already hold a notes table, so a random file is never turned into a database.
+function openDb(path: string, existingOnly: boolean) {
+  const next = new Database(path);
+  try {
+    if (existingOnly && next.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'note'`).all().length === 0) {
+      throw new Error('not a Notaro database');
+    }
+  } catch (error) {
+    try { next.close(); } catch { /* ignore */ }
+    throw error instanceof Error && error.message === 'not a Notaro database' ? error : new Error('not a Notaro database');
+  }
+  const previous = db;
+  db = next;
+  dbPath = path;
+  try { previous?.close(); } catch { /* ignore */ }
+  {
     db.exec(`
       CREATE TABLE IF NOT EXISTS note (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,8 +174,10 @@ export function init(_app: TinyApp) {
     stmts.now = db.prepare(`SELECT datetime('now') AS now`);
 
     seed();
-  })();
+  }
 }
+
+const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 // ---------------------------------------------------------------- tray
 
@@ -331,6 +355,24 @@ function notesXml(notes: Note[], version: string, exportedAt: string): string {
 export const api: Record<string, TinyApiHandler> = {
   // Alt+F4 in the page: terminate instead of hiding to tray
   quitApp: (_params, app) => { app.quit(); return true; },
+
+  dbInfo: withDb(() => ({ path: dbPath, name: fileName(dbPath) })),
+
+  openDb: withDb(({ path }: { path?: string }) => {
+    if (!path) throw new Error('no file chosen');
+    openDb(path, true);
+    return { path: dbPath, name: fileName(dbPath) };
+  }),
+
+  // Copies the current database file; the app keeps working on the original.
+  saveDbAs: withDb(async ({ path }: { path?: string }) => {
+    if (!path) throw new Error('no file chosen');
+    if (path.replace(/\\/g, '/').toLowerCase() === dbPath.replace(/\\/g, '/').toLowerCase()) {
+      throw new Error('that is the database in use');
+    }
+    await tjs.writeFile(path, await tjs.readFile(dbPath));
+    return { path };
+  }),
 
   listNotes: withDb(() => stmts.list.all().map(rowToNote)),
 
