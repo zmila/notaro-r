@@ -1,31 +1,79 @@
 ## Notaro
 
-Notare = "aro de notoj", set of notes, simple note-keeping app.
+Notaro = "aro de notoj", set of notes, simple note-keeping app.
 Written in tinyjs (https://tinyjs.app/docs.html), this implementation is in React.js. 
 Database is SQLite, in file `notes.db` located in root of the app (auto-created on first run). 
 Notes support Markdown formatting.
 
-Currently implemented:
- - create note;
- - edit note in place: the note card turns into an editor (toolbar with Edit/Preview, OK, Cancel on top, then the title and the body; drag the body's bottom-right corner to resize it). One note is edited at a time; the pencil button next to N+ starts editing the selected note, or scrolls back to the note being edited. Actions that change which notes are shown or edited (tag/date/Find filters, new, paste, edit another note, delete) close the editor, asking `Discard unsaved changes?` first when there are unsaved edits; view toggles, sorting, copying and clicks or text selection in other notes keep it open;
- - delete note (or several selected notes at once);
- - `File > Open Database…` / `Save Database As…` / `Reload`: switch to another database file, save a copy of the current one, or re-read the notes from it (open and reload ask about unsaved edits first); the window title shows the database file name (`Notaro - notes.db`);
- - `File > Import…` / `Export All…` (the listed notes) / `Export Selected…`: read or save notes as an XML file (see [Export and import](#export-and-import)); `File > Exit` quits (asking about unsaved edits first);
- - `Edit` menu: `New Note` (`Ctrl+N`), `Copy Note`, `Paste as Note`, `Select All`, `Delete Note` (act on the selected note(s), e.g. `Copy 3 Notes`; the keyboard shortcuts for copy/paste/delete work in the notes list, see below);
- - filtering by tag, date and text; `Ctrl+click` picks several tags (notes with any of them) or several months; `all` stays pinned at the top of the tags column, selected months are marked `✓` and a year header shows how many of its months are selected (`✓2`); a selected tag that no note has any more (its last notes deleted or retagged) leaves the filter, and with none left `all` is selected again (the Find and date filters stay);
- - tags are written in the note body as `#word` (letters of any script, digits, `_`, `-`, `.`; e.g. `#tag1`, `#новый_tag`, `#1-2.3`; not inside code or links); they are collected from the body when the note is saved with `OK`. Tags are shown in blue; clicking one in the notes list selects it in the tags column. A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor. Notes from before this change keep their tags: opening such a note for editing appends the missing ones as a last `#a #b` line;
- - links to other notes: typing `[[` and a character in the editor shows a popup with notes (title, id and last-change date, so notes with the same title can be told apart; the most recently changed first), filtered by the text typed after `[[` (title start first, then title containing it, or the note id). Picking one replaces `[[…` with a Markdown link `[Note title](#note-234)`; its text can be edited freely, the id keeps it pointing at that note. Links are shown underlined; clicking one selects that note (clearing the filters if they hide it); a link to a deleted note says so. Note ids change on import, so links between imported notes don't survive an export/import round trip;
- - sorting by updated/created date or title, 🔽 descending / 🔼 ascending;
- - collapsible tags and calendar columns: toggle buttons `#` and calendar icon at the right end of the toolbar (pressed = column shown), `View` menu, `Ctrl+Shift+T` / `Ctrl+Shift+D`; the state is remembered;
- - calendar years are collapsed on start; click a year header to show or hide its months
-   (a collapsed year containing the selected month has its header highlighted in blue);
- - per-note height toggle left of the title: `█` full note, `▀` 5-line preview (default), `▔` title only; click cycles forward, Shift+click backward; kept in memory only;
- - the same toggle at the right end of the toolbar applies a mode to all notes (the top 20 at once, the rest a moment later); per-note changes made afterwards don't change it, and the next press overrides them again;
- - tray icon (letter N): minimizing or closing the window with the `X` button hides it to the tray, `Alt+F4` quits the app; left click on the icon shows/hides it, right click opens a menu with `Show / Hide` and `Quit`;
- - app icon (thin N, `assets/icon.png`) in the window title bar and taskbar, embedded into the exe by `tinyjs build`;
- - global shortcut `Ctrl+Alt+F11` shows/hides the app from anywhere;
- - `Help > About Notaro` popup showing the current version and release date (taken from the top section of `changelog.md`, `## version X.Y.Z, YYYY-MM-DD`);
- - `Help > Keyboard Shortcuts` (or `F1`) opens a separate window with the shortcut tables below (rendered from this README's `Keyboard shortcuts` section).
+## Features
+
+### Notes
+
+- Each note has a title and a Markdown body (see [Markdown syntax](#markdown-syntax)), plus created and updated dates.
+- Create a note with the `N+` toolbar button, `Insert` or `Ctrl+N`; `Ctrl+V` in the notes list creates a note from the clipboard text.
+- Each card has a size toggle left of its title: `█` full note, `▀` 5-line preview (default), `▔` title only. A click cycles forward, `Shift+click` backward.
+  The same toggle at the right end of the toolbar applies one mode to all notes (the top 20 at once, the rest a moment later); per-note changes made afterwards win until the next press. Sizes are kept in memory only.
+- Select several notes with `Ctrl+click`, `Ctrl+Shift`+arrow keys or `Ctrl+A`; the toolbar then shows `N of M`. Copy, delete and export act on all selected notes.
+- The `Edit` menu (`New Note`, `Copy Note`, `Paste as Note`, `Select All`, `Delete Note`) and a right-click menu on the notes offer the same commands; labels follow the selection (e.g. `Copy 3 Notes`).
+- Delete removes the selected note(s) after one confirmation.
+
+### Editing
+
+- Notes are edited in place: the card turns into an editor with an Edit/Preview toolbar, `OK` and `Cancel`, then the title and the body (drag the body's bottom-right corner to resize it).
+- One note is edited at a time. The pencil button next to `N+` edits the selected note, or scrolls back to the note being edited.
+- Unsaved edits are protected: actions that change which notes are shown or edited (filters, new note, paste, editing another note, delete) close the editor, asking `Discard unsaved changes?` first. View toggles, sorting, copying, and clicks or text selection in other notes keep it open.
+- Formatting shortcuts and the `Format` menu insert Markdown markers; lists continue on `Enter` and indent with `Tab` / `Shift+Tab`; `Ctrl+Z` undoes every change.
+- Find and replace inside the note: `Ctrl+F` (`Edit > Find…`) opens a panel above the body, `Ctrl+R` (`Edit > Replace…`) adds the replace field.
+  - Options: `Aa` match case, `ab` whole word, `*?` wildcards (`*` any text within a line, `?` one character; `\*`, `\?` for the characters themselves).
+  - All matches are highlighted, the current one in orange, with `N of M` next to the field; `↑`/`↓` go to the previous/next match.
+  - `Replace` and `All` replace the current or every match; one `Ctrl+Z` undoes each.
+
+### Tags
+
+- Tags are written in the body as `#word`: letters of any script, digits, `_`, `-`, `.` (e.g. `#tag1`, `#ĉu_aŭ`, `#1-2.3`), not inside code or links.
+- While typing, `#` and a letter show a popup with matching existing tags.
+- Tags are collected from the body when the note is saved with `OK`. They are shown in blue; clicking one in a note selects it in the tags column.
+- A note shown as preview or in full (and the editor's Preview) ends with a row of its tags (`#todo #demo`); a last body line holding only tags is hidden there, but stays in the editor.
+- Notes from older versions keep their tags: opening one for editing appends the missing tags as a last `#a #b` line.
+
+### Links between notes
+
+- Typing `[[` and a character in the editor shows a popup of notes (title, id and last-change date, the most recently changed first), filtered by the typed text: title start first, then title containing it, or the note id.
+- Picking one inserts a Markdown link `[Note title](#note-234)`; its text can be edited freely, the id keeps it pointing at that note.
+- Links are shown underlined; clicking one selects that note (clearing the filters if they hide it); a link to a deleted note says so.
+- External links open in the default browser.
+- Note ids change on import, so links between imported notes don't survive an export/import round trip.
+
+### Finding and sorting
+
+- The toolbar's Find field (`Ctrl+F` when no note is edited) shows only the notes that contain any of the entered words.
+- The tags column (left) filters by tag; `Ctrl+click` picks several tags (notes with any of them). `all`, pinned at the top, clears the tag filter. A selected tag that no note has any more leaves the filter; with none left, `all` is selected again.
+- The calendar column (right) lists the months with notes, grouped by year; years start collapsed and a click on the header shows or hides its months. Click a month to show its notes, `Ctrl+click` to pick several. Selected months are marked `✓`, a year header shows how many of its months are selected (`✓2`), and a collapsed year holding the selected month is highlighted in blue.
+- Tag, date and Find filters combine; `Escape` in the notes list resets them.
+- Sort by updated date, created date or title, 🔽 descending / 🔼 ascending.
+- Both side columns can be hidden: toggle buttons at the right end of the toolbar, the `View` menu, or `Ctrl+Shift+T` / `Ctrl+Shift+D`; the state is remembered.
+
+### Database, import and export
+
+- Notes are stored in an SQLite file, `notes.db` by default; the window title shows its name (`Notaro - notes.db`).
+- `File > Open Database…` switches to another database file, `Save Database As…` saves a copy of the current one, and `Reload` re-reads the notes from it (open and reload ask about unsaved edits first).
+- `File > Import…` adds notes from an XML file.
+- `File > Export All…` saves the listed notes.
+- `File > Export Selected…` saves the selected ones (see [Export and import](./docs/export_import.md), including the XML file format).
+- `File > Exit` quits, asking about unsaved edits first.
+
+### Window and system
+
+- Minimizing or closing the window with the `X` button hides it to the tray (icon with the letter N); `Alt+F4` quits.
+- Left click on the tray icon shows/hides the window; right click opens a menu with `Show / Hide` and `Quit`.
+- The global shortcut `Ctrl+Alt+F11` shows or hides the app from anywhere.
+- The app icon (thin N, `assets/icon.png`) appears in the title bar and taskbar, and is embedded into the exe by `tinyjs build`.
+
+### Help
+
+- `Help > Keyboard Shortcuts` (or `F1`) opens a separate window with all shortcuts, from [keyboard_shortcuts.md](./docs/keyboard_shortcuts.md).
+- `Help > Markdown Syntax` opens a separate window with [markdown_syntax.md](./docs/markdown_syntax.md): every supported marker in three columns — what to type, how it looks (rendered as notes show it), and the shortcut that inserts it.
+- `Help > About Notaro` shows the current version and release date (from the top section of `changelog.md`).
 
 ## Screenshots
 
@@ -43,6 +91,9 @@ Import:
 
 Multi-select tags and monthes, Insert link:
 ![insert link](./docs/insert_link.png)
+
+Find & Replace:
+![find and replace](./docs/find_replace.png)
 
 About popup:
 ![about popup](./docs/about.png)
@@ -64,50 +115,6 @@ Toolbar:
 10. Tags panel: click a tag to show the notes with that tag; `Ctrl+Click` selects several tags. The top item, "all", clears the tag filter.
 11. Calendar panel: lists the months in which notes were created, grouped by year. Click a month to show only that month's notes; `Ctrl+Click` selects several months.
 12. Notes area: each note card has a clickable size toggle `▀`, a title, the "updated — created" dates at the top, and its tags at the bottom.
-
-## Export and import
-
-`File > Export All…` saves all notes currently listed (after the tag, date and Find filters),
-in list order; to export the whole database, clear the filters first (`Escape`). It is disabled
-when the list is empty. `File > Export Selected…` saves the selected note(s), in list order
-(also in the notes' right-click menu when several are selected).
-
-The app first shows a `Save As` dialog with a suggested name (`notaro-all-YYYY-MM-DD.xml` or
-`notaro-selected-YYYY-MM-DD.xml`), then writes the file and reports how many notes were exported.
-
-`File > Import…` asks for an XML file in the format below and adds its notes to the database
-as new notes:
-
-- the `<notaro>` element and its `<note>` children are read; if either is missing, an alert says so and nothing is imported;
-- `id` is ignored (new notes get new ids); `title`, `createdAt` and `updatedAt` are taken from the file (a missing or invalid `createdAt` becomes the import time, a missing `updatedAt` equals `createdAt`);
-- the body is the `CDATA` text; its tags are the `#tags` in the body joined with the `tags` attribute (duplicates removed, case-insensitive) and the tag `#imported_yyyymmdd_hhmmss` (the import's local time);
-- the full tag list is written as the body's last line (`#a #b #imported_…`), replacing a last line that held only tags;
-- after the import the list reloads and that tag is selected, so exactly the imported notes are shown.
-
-### File format
-
-A UTF-8 XML file:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<notaro version="0.7.0" updatedAt="2026-10-23 17:00:00" notesCount="2">
-  <note id="33" title="Shopping" createdAt="2026-10-01 10:00:00" updatedAt="2026-10-02 11:00:00" tags="todo home"><![CDATA[- milk
-- bread
-#todo #home]]></note>
-  <note id="34" title="Idea" createdAt="2026-10-03 09:15:00" updatedAt="2026-10-03 09:15:00" tags=""><![CDATA[Some **markdown** text]]></note>
-</notaro>
-```
-
-- `notaro`: the root element.
-  - `version`: the app version that made the file.
-  - `updatedAt`: the export time (`yyyy-mm-dd HH:MM:SS`, UTC).
-  - `notesCount`: the number of `note` elements.
-- `note`: one element per note.
-  - `id`: the note's database id.
-  - `title`: the note title. Attribute values are XML-escaped (`&amp;`, `&lt;`, `&gt;`, `&quot;`, line breaks as `&#10;`).
-  - `createdAt`, `updatedAt`: as stored in the database (`yyyy-mm-dd HH:MM:SS`, UTC).
-  - `tags`: the note's tags without `#`, separated by spaces.
-  - The note body, as Markdown text in a `CDATA` section. A `]]>` inside the body is split across two `CDATA` sections, so XML parsers read it back unchanged.
 
 ## Mass actions (not exposed in the UI)
 
@@ -134,99 +141,19 @@ that calls them.
 
 ## Keyboard shortcuts
 
-### Global
+- `Ctrl+Alt+F11`: show the app from anywhere, or hide it to the tray.
+- `Insert` or `Ctrl+N`: create a new note.
+- `Enter` or `F2`: edit the selected note; `Ctrl+Enter` saves it, `Escape` cancels.
+- `Ctrl+F`: filter the notes list, or find (`Ctrl+R`: and replace) in the note being edited.
+- `F1`: the full list of shortcuts (also `Help > Keyboard Shortcuts`).
 
-- `Ctrl+Alt+F11`: show the app (also restores it from the tray), or hide it to the tray when it is focused.
-- `Alt+F4`: quit the app (the `X` button only hides it to the tray).
-- `F1`: open the keyboard shortcuts window (also `Help > Keyboard Shortcuts`); `Escape` closes it.
+See the full list of global, browsing, editing and formatting shortcuts in
+[keyboard_shortcuts.md](./docs/keyboard_shortcuts.md).
 
-### Browsing notes
+## Markdown syntax
 
-- `Insert` or `Ctrl+N`: create a new note (also the `N+` toolbar button).
-- `Ctrl+Shift+T`: show/hide the tags column.
-- `Ctrl+Shift+D`: show/hide the calendar (dates) column.
-- `Ctrl+plus`: expand the selected note (preview or title only → full, full → preview).
-- `Ctrl+minus`: collapse the selected note (preview or full → title only, title only → preview).
-- `Ctrl+Shift+plus` / `Ctrl+Shift+minus`: the same for all notes (like the toolbar toggle).
-- `Ctrl+V`: open a new note titled `clipboard` with the clipboard text as its body.
-  Review it, then save with `OK`.
-- `Ctrl+C`: copy the selected note (title, blank line, body); several selected notes are copied
-  one after another, separated by `---` lines. With text selected in a note,
-  `Ctrl+C` (or `Ctrl+Insert`) copies just that text.
-- `Enter` or `F2`: edit the selected note (or double-click the note's header bar).
-- `Delete`: delete the selected note(s), after one confirmation; the next note (or the previous one, at the end) gets selected.
-- `Escape`: with several notes selected, keep only the current one; otherwise reset filters
-  (outside the note editor) and move the focus to the notes list, keeping the selected note or selecting the top one.
-- `Ctrl+ArrowDown` / `Ctrl+ArrowUp`: select the next / previous note; a note off screen scrolls
-  just into view (at the bottom when moving down, at the top when moving up).
-- `Ctrl+PageDown` / `Ctrl+PageUp`: move the selection 10 notes down / up.
-- `Ctrl+Home` / `Ctrl+End`: select the first / last note.
-  (`Ctrl+ArrowUp/Down` and `Ctrl+PageUp/Down` also work from the Find field.)
-- Several notes: `Ctrl+click` adds a note to the selection or removes it; `Ctrl+Shift` with the
-  keys above extends the selection from where it started; `Ctrl+A` selects all listed notes
-  (also `Edit > Select All`). The current note has a dashed outline and the toolbar
-  shows `N of M`; a plain click or `Ctrl+arrow` selects one note again. `Ctrl+plus/minus`,
-  copy, delete and `File > Export Selected…` act on all selected notes.
-- Changing the sort keeps the selected notes and scrolls to the current one; a filter keeps
-  those still listed, or selects the top listed note.
-- `Ctrl+F`: focus and select the Find field.
-- `ArrowDown` in the Find field: select the first listed note and move the focus to the notes list,
-  so `Enter`, `Delete` and the other keys act on notes.
-- Right-click a note or the empty list: menu with the commands above and their shortcuts
-  (`ArrowUp`/`ArrowDown`, `Enter`, `Escape`); `Copy Selection` is added when text in the note is selected.
-- Note text can be selected with the mouse (drag, double-click a word).
-- `Shift`+right-click: the browser's own menu, for `Inspect` (DevTools are available in `tinyjs dev`; `F12` opens them too).
-
-### Editing a note
-
-- `Escape` or `Cancel`: leave the editor without saving (no question asked).
-- `Ctrl+Enter`, or `Enter` in the title: save the note (`OK`).
-- The view shortcuts (`Ctrl+Shift+T`/`D`, `Ctrl(+Shift)+plus/minus`) and `Ctrl+F` work while editing.
-- `ArrowDown` in the title field: move to the start of the body.
-- `ArrowUp` at the top of the body: move to the end of the title.
-- `Ctrl+ArrowUp` in the body: move to the end of the title.
-- `Tab` in the body: on a list item, nest it one level deeper (four spaces), taking its
-  sub-items along and the marker style of the items already on that level; elsewhere
-  insert a tab, or indent selected lines.
-- `Shift+Tab` in the body: move a list item one level up (restyled to match that level),
-  or outdent selected lines.
-- `Ctrl+Tab` in the body: toggle Edit/Preview mode.
-- `Enter` in a list item (`-`, `*`, `+`, `1.`, `1)` or `>`): start the next item
-  (numbers count up). `Enter` on an empty nested item moves it one level up; on an empty
-  top-level item it ends the list. `Shift+Enter` inserts a plain line break.
-- Numbered lists renumber themselves when an item is added, removed or moved; only the
-  list being edited changes, and it keeps its starting number. `Ctrl+Z` undoes the
-  renumbering first, then the edit.
-- Typing `#` and a letter shows a popup with existing tags starting with the text typed
-  so far (it follows further typing). The same happens after pasting such text, and after
-  typing or deleting inside an existing `#tag` (the tag is matched by its part before the
-  cursor, and picking one replaces the whole tag). `Down` moves into the list, `Up`/`Down`/`PgUp`/`PgDn` pick a tag,
-  `Enter` inserts it (or click one with the mouse), `Esc` or a click elsewhere closes the popup.
-  `Up` on the first tag returns to the text.
-- Typing `[[` and a character shows a popup with notes to link (see above), the first one highlighted;
-  further typing filters it (pasting `[[text` works too). `Up`/`Down`/`PgUp`/`PgDn` pick a note, `Enter` (or a click) inserts
-  the link, `Esc` closes the popup for this `[[`.
-- Typing or deleting inside the text of an existing note link `[Note title](#note-234)` shows the
-  same popup, filtered by the text before the cursor; here `Down` moves into the list first
-  (so `Enter` still makes a new line), and picking a note replaces the whole link.
-
-### Formatting the note body
-
-The same commands are in the `Format` menu.
-Inline styles wrap the selection; pressing the shortcut again removes the style.
-With no selection they insert an empty pair of markers and put the cursor between them.
-Line styles apply to every line touched by the selection; pressing again removes them.
-`Ctrl+Z` undoes each step.
-
-- `Ctrl+B`: bold, `**text**`.
-- `Ctrl+I`: italic, `*text*`.
-- `Ctrl+U`: underline, `<u>text</u>`.
-- `Ctrl+K`: strikethrough, `~~text~~`.
-- `Ctrl+M`: monospace, `` `text` `` (a fenced code block when the selection spans several lines).
-- `Ctrl+1`, `Ctrl+2`, `Ctrl+3`: heading level 1, 2, 3.
-- `Ctrl+9`: numbered list.
-- `Ctrl+0`: bulleted list.
-- `Ctrl+D`: clear all formatting from the selected lines.
+Note text is Markdown. See all supported markers, how they look, and their keyboard shortcuts in
+[markdown_syntax.md](./docs/markdown_syntax.md) (also `Help > Markdown Syntax`).
 
 ## How to run
 
@@ -266,21 +193,8 @@ e.g. "update changelog, minor": it adds a new section with the bumped version an
 and updates `tinyjs.json`.
 
 
-# h1 example of formatting
-
-1. Lorem **ipsum** *dolor sit* <u>amet</u>, ~~consectetur~~ `adipiscing` ~elit~ \*escape\*
-- code example `inline` or ```triple``` 
-> blockquote
-> multiline
-```
-and code
-several lines
-```
-
 ## TODO
 
-- update readme/help with information about toolbar: image with numbers over icons/controls and below it numbered list with description of what each control do
-- find (and replace) while edit notes - new popup.
 - implement soft delete (changes in db) and "show deleted", "clear deleted".
 - show stats page (popup) with list of tags and count of notes in each, and list of calendar (years/monthes) with count of notes in each;
 - implement history feature (list of visited notes with navigation back/forward as in browser). 

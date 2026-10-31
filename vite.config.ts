@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rolldownOptions: {
-      // shortcuts.html: the Help > Keyboard Shortcuts window (tiny.win.open)
-      input: { main: 'index.html', shortcuts: 'shortcuts.html' },
+      // shortcuts.html / markdown.html: the Help > Keyboard Shortcuts / Markdown Syntax windows (tiny.win.open)
+      input: { main: 'index.html', shortcuts: 'shortcuts.html', markdown: 'markdown.html' },
     },
   },
 })

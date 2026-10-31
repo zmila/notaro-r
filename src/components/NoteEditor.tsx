@@ -1,11 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode, type Ref } from 'react'
+import { FindPanel } from './FindPanel'
 import { MarkdownContent } from './MarkdownContent'
 import { NoteTags } from './NoteTags'
 import { SuggestPopup, type SuggestItem } from './SuggestPopup'
+import { FIND_LIMIT, findMatches, matchIndexFrom, replaceAllEdit, type FindMatch, type FindOptions } from '../findText'
 import { noteDates } from '../noteDates'
 import { findLinkTargets, noteLabel, noteLinkMarkdown, noteLinkPrefixAt } from '../noteLinks'
 import { extractTags, stripTagLine, tagPrefixAt } from '../noteTags'
-import { textareaCaretRect, type CaretRect } from '../textareaCaret'
+import { textareaCaretRect, textareaTextStyle, type CaretRect } from '../textareaCaret'
 import {
   formatCommands,
   formatMarkdown,
@@ -28,6 +30,26 @@ interface NoteEditorProps {
   tags: string[]
   /** notes offered after `[[` (a link to another note), in this order */
   linkTargets: Note[]
+  ref?: Ref<NoteEditorHandle>
+}
+
+export interface NoteEditorHandle {
+  /** Ctrl+F / Ctrl+R: show the find panel (with the Replace row) and focus it */
+  openFind: (replace: boolean) => void
+}
+
+// The body's text with the find matches marked, for the layer behind the textarea.
+function findHits(text: string, matches: FindMatch[], current: number): ReactNode[] {
+  const parts: ReactNode[] = []
+  let at = 0
+  matches.forEach((match, index) => {
+    parts.push(text.slice(at, match.start))
+    parts.push(<mark key={index} className={`find-hit${index === current ? ' current' : ''}`}>{text.slice(match.start, match.end)}</mark>)
+    at = match.end
+  })
+  // A trailing newline makes a line in the textarea, but not in a div.
+  parts.push(`${text.slice(at)} `)
+  return parts
 }
 
 const MIN_BODY_HEIGHT = 120
@@ -67,7 +89,7 @@ function applyFormatEdit(body: HTMLTextAreaElement, format: FormatCommand) {
 
 // The note card in edit mode: a toolbar on top, then the title and the body
 // sharing one border. The body's bottom-right corner resizes it.
-export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tags, linkTargets }: NoteEditorProps) {
+export function NoteEditor({ ref, note, initial, onSave, onCancel, onDirtyChange, tags, linkTargets }: NoteEditorProps) {
   const cardRef = useRef<HTMLElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -87,6 +109,28 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
   // Shared by the body and the preview, so switching keeps the size.
   const [height, setHeight] = useState<number | undefined>(undefined)
   const dirty = draft.title !== initial.title || draft.body !== initial.body
+
+  // Find (and Replace) in the body. The current match is the first one at or
+  // after `findAnchor`; `reveal` bumps select it and scroll it into view.
+  const findRef = useRef<HTMLInputElement>(null)
+  const replaceRef = useRef<HTMLInputElement>(null)
+  const backdropRef = useRef<HTMLDivElement>(null)
+  const [findOpen, setFindOpen] = useState(false)
+  const [showReplace, setShowReplace] = useState(false)
+  const [query, setQuery] = useState('')
+  const [replacement, setReplacement] = useState('')
+  const [findOptions, setFindOptions] = useState<FindOptions>({ matchCase: false, wholeWord: false, wildcards: false })
+  const [findAnchor, setFindAnchor] = useState(0)
+  const [reveal, setReveal] = useState(0)
+  const [findFocus, setFindFocus] = useState({ target: 'find' as 'find' | 'replace', gen: 0 })
+  const matches = useMemo(
+    () => (findOpen && !preview ? findMatches(draft.body, query, findOptions) : []),
+    [findOpen, preview, draft.body, query, findOptions],
+  )
+  const current = matchIndexFrom(matches, findAnchor)
+  const findStatus = matches.length > 0
+    ? `${current + 1} of ${matches.length}${matches.length >= FIND_LIMIT ? '+' : ''}`
+    : (query ? 'No results' : '')
 
   useEffect(() => {
     onDirtyChange(dirty)
@@ -141,9 +185,129 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
     const current = preview ? previewRef.current : bodyRef.current
     if (current) setHeight(current.offsetHeight)
     setSuggest(null)
+    // Find works on the text, not on the rendered preview.
+    if (value) setFindOpen(false)
     focusBodyAfterToggle.current = true
     setPreview(value)
   }
+
+  function openFind(replace: boolean) {
+    const body = bodyRef.current
+    let seed = query
+    if (body) {
+      const selected = body.value.slice(body.selectionStart, body.selectionEnd)
+      if (selected && !selected.includes('\n') && selected.length <= 200) seed = selected
+      setFindAnchor(body.selectionStart)
+    } else if (preview) {
+      if (previewRef.current) setHeight(previewRef.current.offsetHeight)
+      setSuggest(null)
+      setPreview(false)
+    }
+    setQuery(seed)
+    setFindOpen(true)
+    if (replace) setShowReplace(true)
+    setFindFocus((focus) => ({ target: replace && seed ? 'replace' : 'find', gen: focus.gen + 1 }))
+    setReveal((value) => value + 1)
+  }
+
+  useImperativeHandle(ref, () => ({ openFind }))
+
+  function closeFind() {
+    setFindOpen(false)
+    // The current match stays selected.
+    bodyRef.current?.focus()
+  }
+
+  function stepMatch(step: 1 | -1) {
+    if (matches.length === 0) return
+    const next = matches[(current + step + matches.length) % matches.length]
+    setFindAnchor(next.start)
+    setReveal((value) => value + 1)
+  }
+
+  // An edit made from the find panel: execCommand needs the textarea focused
+  // (for Ctrl+Z), then the focus goes back to the panel.
+  function editFromPanel(from: number, to: number, text: string) {
+    const body = bodyRef.current
+    if (!body) return
+    const active = document.activeElement as HTMLElement | null
+    body.focus({ preventScroll: true })
+    replaceInBody(body, from, to, text)
+    if (active && active !== body) active.focus({ preventScroll: true })
+  }
+
+  function replaceCurrent() {
+    const match = matches[current]
+    if (!match) return
+    editFromPanel(match.start, match.end, replacement)
+    setFindAnchor(match.start + replacement.length)
+    setReveal((value) => value + 1)
+  }
+
+  function replaceAll() {
+    const body = bodyRef.current
+    if (!body) return
+    const edit = replaceAllEdit(body.value, findMatches(body.value, query, findOptions, Infinity), replacement)
+    if (!edit) return
+    editFromPanel(edit.from, edit.to, edit.text)
+    setFindAnchor(edit.from)
+  }
+
+  useEffect(() => {
+    if (findFocus.gen === 0) return
+    const input = findFocus.target === 'replace' ? replaceRef.current : findRef.current
+    input?.focus()
+    input?.select()
+  }, [findFocus])
+
+  // The highlight layer sits exactly over the textarea's text area (without
+  // its scrollbar) and wraps the text the same way.
+  useLayoutEffect(() => {
+    const body = bodyRef.current
+    const backdrop = backdropRef.current
+    if (!findOpen || !body || !backdrop) return
+    const place = () => {
+      for (const [name, value] of Object.entries(textareaTextStyle(body))) backdrop.style.setProperty(name, value)
+      Object.assign(backdrop.style, {
+        top: `${body.offsetTop + body.clientTop}px`,
+        left: `${body.offsetLeft + body.clientLeft}px`,
+        width: `${body.clientWidth}px`,
+        height: `${body.clientHeight}px`,
+      })
+      backdrop.scrollTop = body.scrollTop
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    observer.observe(body)
+    return () => observer.disconnect()
+  }, [findOpen, preview])
+
+  // Text changes re-render the layer; keep it scrolled with the textarea.
+  useLayoutEffect(() => {
+    const body = bodyRef.current
+    if (backdropRef.current && body) backdropRef.current.scrollTop = body.scrollTop
+  })
+
+  // Select the current match and scroll it into view (the textarea, then the notes list).
+  useLayoutEffect(() => {
+    const body = bodyRef.current
+    const backdrop = backdropRef.current
+    const match = matches[current]
+    if (reveal === 0 || !body || !backdrop || !match) return
+    body.setSelectionRange(match.start, match.end)
+    const mark = backdrop.querySelector<HTMLElement>('.find-hit.current')
+    if (!mark) return
+    const top = mark.offsetTop
+    const bottom = top + mark.offsetHeight
+    if (top < body.scrollTop || bottom > body.scrollTop + body.clientHeight) {
+      body.scrollTop = Math.max(0, top - body.clientHeight / 3)
+    }
+    backdrop.scrollTop = body.scrollTop
+    mark.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    body.scrollTop = backdrop.scrollTop
+    // Only the reveal requests move the selection, not every recomputed match list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal])
 
   function focusBody(atEnd: boolean) {
     const body = bodyRef.current
@@ -283,10 +447,17 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
 
   function cardKeyDown(event: KeyboardEvent<HTMLElement>) {
     const command = event.ctrlKey || event.metaKey
-    if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+    if (event.key === 'Escape' && findOpen && !event.nativeEvent.isComposing) {
+      event.preventDefault()
+      event.stopPropagation()
+      closeFind()
+    } else if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
       event.preventDefault()
       event.stopPropagation()
       onCancel()
+    } else if (event.key === 'F3' && findOpen && !command && !event.altKey) {
+      event.preventDefault()
+      stepMatch(event.shiftKey ? -1 : 1)
     } else if (event.key === 'Enter' && command) {
       event.preventDefault()
       void save()
@@ -404,6 +575,36 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
           }
         }}
       />
+      {findOpen && !preview && (
+        <FindPanel
+          query={query}
+          replacement={replacement}
+          options={findOptions}
+          showReplace={showReplace}
+          status={findStatus}
+          hasMatches={matches.length > 0}
+          findRef={findRef}
+          replaceRef={replaceRef}
+          onQuery={(value) => {
+            setQuery(value)
+            setReveal((gen) => gen + 1)
+          }}
+          onReplacement={setReplacement}
+          onOption={(name) => {
+            setFindOptions((options) => ({ ...options, [name]: !options[name] }))
+            setReveal((gen) => gen + 1)
+          }}
+          onToggleReplace={() => {
+            setShowReplace(!showReplace)
+            setFindFocus((focus) => ({ target: showReplace ? 'find' : 'replace', gen: focus.gen + 1 }))
+          }}
+          onNext={() => stepMatch(1)}
+          onPrevious={() => stepMatch(-1)}
+          onReplace={replaceCurrent}
+          onReplaceAll={replaceAll}
+          onClose={closeFind}
+        />
+      )}
       {preview ? (
         <>
           <MarkdownContent
@@ -416,17 +617,27 @@ export function NoteEditor({ note, initial, onSave, onCancel, onDirtyChange, tag
           <NoteTags tags={extractTags(draft.body)} />
         </>
       ) : (
-        <textarea
-          ref={bodyRef}
-          className="editor-body"
-          value={draft.body}
-          placeholder="note text… (#tags anywhere, [[ links another note)"
-          style={{ height }}
-          onChange={bodyChange}
-          onKeyDown={bodyKeyDown}
-          onSelect={(event) => refreshSuggest(event.currentTarget, false)}
-          onBlur={() => setSuggest(null)}
-        />
+        <div className={`editor-body-wrap${findOpen ? ' finding' : ''}`}>
+          {findOpen && (
+            <div ref={backdropRef} className="find-backdrop" aria-hidden="true">
+              {findHits(draft.body, matches, current)}
+            </div>
+          )}
+          <textarea
+            ref={bodyRef}
+            className="editor-body"
+            value={draft.body}
+            placeholder="note text… (#tags anywhere, [[ links another note)"
+            style={{ height }}
+            onChange={bodyChange}
+            onKeyDown={bodyKeyDown}
+            onScroll={(event) => {
+              if (backdropRef.current) backdropRef.current.scrollTop = event.currentTarget.scrollTop
+            }}
+            onSelect={(event) => refreshSuggest(event.currentTarget, false)}
+            onBlur={() => setSuggest(null)}
+          />
+        </div>
       )}
       {suggest && !preview && (
         <SuggestPopup

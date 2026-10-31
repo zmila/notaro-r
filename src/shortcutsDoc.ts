@@ -1,7 +1,7 @@
 import { marked, type Token, type Tokens } from 'marked'
 
-// The `## Keyboard shortcuts` section of README.md, split into its `###`
-// sections; list items become key/description rows.
+// docs/keyboard_shortcuts.md for the Keyboard Shortcuts window: the `#` title,
+// then `##` sections; list items of the form "`keys`: text" become key/description rows.
 
 export interface ShortcutRow {
   /** inline Markdown of the keys; null = a row with only a description */
@@ -16,17 +16,8 @@ export interface ShortcutSection {
   rows: ShortcutRow[]
 }
 
-const SECTION_HEADING = '## Keyboard shortcuts'
 // "`Ctrl+B`: bold" → keys `Ctrl+B`; a longer lead-in is a sentence, not keys.
 const MAX_KEYS_LENGTH = 60
-
-export function shortcutsSection(readme: string): string {
-  const lines = readme.split(/\r?\n/)
-  const start = lines.findIndex((line) => line.trim() === SECTION_HEADING)
-  if (start < 0) return ''
-  const end = lines.findIndex((line, index) => index > start && /^##\s/.test(line))
-  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n')
-}
 
 export function splitShortcut(item: string): ShortcutRow {
   const text = item.replace(/\s*\n\s*/g, ' ').trim()
@@ -35,11 +26,14 @@ export function splitShortcut(item: string): ShortcutRow {
   return { keys: text.slice(0, colon), text: text.slice(colon + 2) }
 }
 
-export function parseShortcuts(readme: string): ShortcutSection[] {
+export function parseShortcuts(doc: string): { title: string, sections: ShortcutSection[] } {
+  let title = 'Keyboard shortcuts'
   const sections: ShortcutSection[] = []
-  for (const token of marked.lexer(shortcutsSection(readme)) as Token[]) {
-    if (token.type === 'heading' && (token as Tokens.Heading).depth === 3) {
-      sections.push({ title: (token as Tokens.Heading).text, intro: [], rows: [] })
+  for (const token of marked.lexer(doc) as Token[]) {
+    if (token.type === 'heading') {
+      const heading = token as Tokens.Heading
+      if (heading.depth === 1) title = heading.text
+      else if (heading.depth === 2) sections.push({ title: heading.text, intro: [], rows: [] })
       continue
     }
     const section = sections.at(-1)
@@ -49,5 +43,5 @@ export function parseShortcuts(readme: string): ShortcutSection[] {
       for (const item of (token as Tokens.List).items) section.rows.push(splitShortcut(item.text))
     }
   }
-  return sections
+  return { title, sections }
 }

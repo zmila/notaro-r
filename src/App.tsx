@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AboutDialog } from './components/AboutDialog'
 import { CalendarPanel } from './components/CalendarPanel'
 import { ContextMenu } from './components/ContextMenu'
-import { NoteEditor } from './components/NoteEditor'
+import { NoteEditor, type NoteEditorHandle } from './components/NoteEditor'
 import { NotesPanel, type NotesPanelHandle } from './components/NotesPanel'
 import { Toolbar } from './components/Toolbar'
 import { TagsPanel } from './components/TagsPanel'
@@ -58,17 +58,18 @@ interface EditSession {
 
 const MIN_SEARCH_LENGTH = 3
 
-// Help > Keyboard Shortcuts (F1): a separate, non-modal window; opening it
-// again just focuses it. Its page renders README.md's shortcut list.
-function openShortcutsWindow() {
-  void tiny.win.open('shortcuts', {
-    page: 'shortcuts.html',
-    title: 'Notaro — Keyboard Shortcuts',
-    size: '760x640',
+// Help windows: separate and non-modal; opening one again just focuses it.
+// They show docs/keyboard_shortcuts.md (F1) and docs/markdown_syntax.md.
+function openHelpWindow(id: 'shortcuts' | 'markdown') {
+  const title = id === 'shortcuts' ? 'Keyboard Shortcuts' : 'Markdown Syntax'
+  void tiny.win.open(id, {
+    page: `${id}.html`,
+    title: `Notaro — ${title}`,
+    size: id === 'shortcuts' ? '760x640' : '900x700',
     minSize: '420x300',
     chrome: { menu: false },
   })?.catch((error: unknown) => {
-    void tiny.dialog.alert('Cannot open the shortcuts window.', error instanceof Error ? error.message : String(error))
+    void tiny.dialog.alert(`Cannot open the ${title} window.`, error instanceof Error ? error.message : String(error))
   })
 }
 
@@ -139,6 +140,21 @@ export default function App() {
     const step = action.endsWith('grow') ? growNoteView : shrinkNoteView
     if (action.startsWith('all')) setBulkView((current) => ({ view: step(current.view), prev: current.view, gen: current.gen + 1 }))
     else notesPanel.current?.stepSelected(step)
+  }, [acceptShortcut])
+
+  // Ctrl+F / Ctrl+R: find (and replace) in the edited note; with no editor
+  // open, Ctrl+F goes to the toolbar's Find field (the note filter).
+  const noteEditor = useRef<NoteEditorHandle>(null)
+  const findCommand = useCallback((replace: boolean, source: 'menu' | 'key') => {
+    if (!acceptShortcut(replace ? 'edit:replace' : 'edit:find', source)) return
+    if (editingRef.current) {
+      noteEditor.current?.openFind(replace)
+      return
+    }
+    if (replace) return
+    const input = document.getElementById('find-input') as HTMLInputElement | null
+    input?.focus()
+    input?.select()
   }, [acceptShortcut])
 
   useEffect(() => {
@@ -456,14 +472,18 @@ export default function App() {
 
   useEffect(() => tiny.menu.on((id) => {
     if (id === 'about') setAboutOpen(true)
-    if (id === 'help:shortcuts') openShortcutsWindow()
+    if (id === 'help:shortcuts') openHelpWindow('shortcuts')
+    if (id === 'help:markdown') openHelpWindow('markdown')
     // Ctrl+N arrives as a native menu accelerator (WebView2 swallows the key).
     if (id === 'note:new' && !document.querySelector('dialog[open], .context-menu')) openNewNote()
     if (id === 'view:tags') toggleColumn('tags', 'menu')
     if (id === 'view:calendar') toggleColumn('calendar', 'menu')
+    if ((id === 'edit:find' || id === 'edit:replace') && !document.querySelector('dialog[open], .context-menu')) {
+      findCommand(id === 'edit:replace', 'menu')
+    }
     const resize = MENU_RESIZE[id]
     if (resize && !document.querySelector('dialog[open], .context-menu')) resizeNotes(resize, 'menu')
-  }), [toggleColumn, resizeNotes, openNewNote])
+  }), [toggleColumn, resizeNotes, openNewNote, findCommand])
 
   // `all`: every listed note (clear the filters to export the whole database).
   async function exportNotes(scope: 'all' | 'selected', list: Note[] = scope === 'all' ? visibleNotes : selectedNotes) {
@@ -640,6 +660,10 @@ export default function App() {
     void tiny.menu?.update?.('file:exportAll', { enabled: hasListed })?.catch(() => {})
     void tiny.menu?.update?.('note:selectAll', { enabled: hasListed })?.catch(() => {})
   }, [hasListed])
+  const isEditing = editing !== null
+  useEffect(() => {
+    void tiny.menu?.update?.('edit:replace', { enabled: isEditing })?.catch(() => {})
+  }, [isEditing])
 
   function openEditNote(note: Note) {
     if (editingRef.current?.note?.id === note.id) {
@@ -701,7 +725,7 @@ export default function App() {
       if (aboutOpen || noteMenu) return
       if (event.key === 'F1' && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
         event.preventDefault()
-        openShortcutsWindow()
+        openHelpWindow('shortcuts')
         return
       }
       const target = event.target as HTMLElement | null
@@ -712,11 +736,10 @@ export default function App() {
       const selectedNote = notes.find((item) => item.id === selectedId)
       const key = event.key.toLowerCase()
       const nav = commandKey(event) ? NAV_KEYS[event.key] : undefined
-      if (commandKey(event) && key === 'f') {
+      if (commandKey(event) && !event.shiftKey && !event.altKey && (key === 'f' || key === 'r')) {
+        // Also keeps the browser's own find bar and reload away.
         event.preventDefault()
-        const input = document.getElementById('find-input') as HTMLInputElement | null
-        input?.focus()
-        input?.select()
+        findCommand(key === 'r', 'key')
       } else if (commandKey(event) && event.shiftKey && !event.altKey && (key === 't' || key === 'd')) {
         event.preventDefault()
         if (!event.repeat) toggleColumn(key === 't' ? 'tags' : 'calendar', 'key')
@@ -847,6 +870,7 @@ export default function App() {
             editingId={editing?.note?.id ?? null}
             editor={editing && (
               <NoteEditor
+                ref={noteEditor}
                 key={editing.key}
                 note={editing.note}
                 initial={editing.initial}

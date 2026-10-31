@@ -1,3 +1,5 @@
+@import url('./noteContent.css');
+
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
@@ -185,38 +187,6 @@ button { cursor: pointer; }
   cursor: text;
 }
 .note-text::-webkit-scrollbar { display: none; }
-.note-text ul, .note-text ol, .editor-preview ul, .editor-preview ol { margin: 0 0 8px; padding-left: 1.5em; }
-.note-text li, .editor-preview li { padding-left: .2em; }
-.note-text li > ul, .note-text li > ol, .editor-preview li > ul, .editor-preview li > ol { margin-bottom: 0; }
-.note-text blockquote, .editor-preview blockquote {
-  margin: 0 0 8px;
-  padding: 2px 10px;
-  color: #5b636e;
-  font-style: italic;
-  background: var(--bg-panel);
-  border-left: 3px solid var(--border);
-  border-radius: 0 3px 3px 0;
-}
-.note-text blockquote > :last-child, .editor-preview blockquote > :last-child { margin-bottom: 0; }
-.note-text code, .editor-preview code {
-  padding: 1px 4px;
-  font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: .9em;
-  background: #eef1f5;
-  border: 1px solid var(--border-soft);
-  border-radius: 3px;
-}
-.note-text pre, .editor-preview pre {
-  margin: 0 0 8px;
-  padding: 6px 10px;
-  overflow-x: auto;
-  background: #eef1f5;
-  border: 1px solid var(--border-soft);
-  border-left: 3px solid var(--border);
-  border-radius: 3px;
-}
-.note-text pre code, .editor-preview pre code { padding: 0; background: none; border: none; }
-.note-tag { color: var(--accent); }
 .note-tags { display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 3px 10px 5px; font-size: 12.5px; border-top: 1px solid var(--border-soft); }
 .editor-preview + .note-tags { background: var(--bg); }
 .tag-suggest {
@@ -240,7 +210,6 @@ button { cursor: pointer; }
 .tag-suggest-item.active { background: var(--head-sel); }
 .note:not(.editing) .note-tag { cursor: pointer; }
 .note:not(.editing) .note-tag:hover { text-decoration: underline; }
-.note-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
 .note-editor .note-link { cursor: default; }
 .note-match { padding: 0 1px; background: #fff3a6; border: 1px solid #d6bf4a; border-radius: 2px; }
 .note.selected { background: var(--note-sel); border-color: var(--accent); }
@@ -296,6 +265,30 @@ button { cursor: pointer; }
 .editor-body { height: 16em; font: inherit; line-height: 1.45; }
 .editor-preview { height: 16em; overflow-y: auto; color: #3b424b; user-select: text; cursor: text; }
 .editor-title:focus, .editor-body:focus, .editor-preview:focus { outline: none; background: #fdfeff; }
+/* Find (and Replace) in the edited note: a panel above the text, and a layer
+   behind the (then transparent) textarea that marks the matches. */
+.find-panel { display: flex; align-items: flex-start; gap: 4px; padding: 4px 6px; background: var(--bg-panel); border-bottom: 1px solid var(--border-soft); }
+.find-rows { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.find-row { display: flex; align-items: center; gap: 4px; }
+.find-field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 1px; height: 26px; padding-right: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; }
+.find-field:focus-within { border-color: var(--accent); }
+.find-panel-input { flex: 1; min-width: 0; height: 100%; padding: 0 6px; color: var(--text); background: none; border: 0; outline: none; }
+.find-opt, .find-btn { flex: none; height: 22px; min-width: 22px; padding: 0 3px; color: var(--text); font-size: 12.5px; line-height: 1; background: none; border: 1px solid transparent; border-radius: 3px; }
+.find-opt { font-family: Consolas, 'Cascadia Mono', monospace; }
+.find-opt-word { text-decoration: underline; text-underline-offset: 2px; }
+.find-opt:hover, .find-btn:hover:not(:disabled) { background: var(--hover); }
+.find-opt.active { color: var(--accent); background: var(--head-sel); border-color: var(--accent); }
+.find-btn { font-size: 15px; }
+.find-btn:disabled { color: var(--muted); opacity: .6; cursor: default; }
+.find-expand { height: 26px; color: var(--muted); }
+.find-text-btn { padding: 0 8px; font-size: 12.5px; border-color: var(--border); }
+.find-status { flex: none; min-width: 6.5em; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
+.find-status.none { color: #b3261e; }
+.editor-body-wrap { position: relative; background: var(--bg); }
+.editor-body-wrap.finding .editor-body { position: relative; background: transparent; }
+.find-backdrop { position: absolute; overflow: hidden; color: transparent; pointer-events: none; user-select: none; }
+.find-hit { color: transparent; background: #fff1a8; border-radius: 2px; }
+.find-hit.current { background: #f9b24e; }
 .dialog-btn { min-width: 5.5em; height: auto; padding: 5px 12px; }
 .about { inset: 0; margin: auto; padding: 0; width: 26em; max-width: 92vw; color: var(--text); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; }
 .about::backdrop { background: rgb(0 0 0 / 25%); }

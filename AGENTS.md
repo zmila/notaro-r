@@ -91,14 +91,26 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   must return a new array each call, or React sees no change after the import.
 - `app.paths` is a function since tinyjs 0.57, but the bundled `backend/tiny.d.ts` predates it
   (see the cast in `setupTray`).
-- Help > Keyboard Shortcuts (id `help:shortcuts`, page key `F1`) opens a non-modal second window
-  with `tiny.win.open('shortcuts', { page: 'shortcuts.html', chrome: { menu: false } })` (same id
-  again focuses it). `shortcuts.html` is a second Vite input (`build.rolldownOptions.input` in
-  `vite.config.ts`); a relative `page` resolves against the dev URL in `tinyjs dev` and the dist
-  folder in builds. Its content is README.md's `## Keyboard shortcuts` section, imported with `?raw`
-  and parsed by `src/shortcutsDoc.ts`: `###` headings become sections, items of the form
-  ``- `keys`: text`` become rows (no `: ` in the first 60 chars → a full-width row). Keep that format
-  when editing the README section.
+- Help windows' text lives in `docs/` (README only links to it), imported with `?raw`:
+  - Help > Keyboard Shortcuts (id `help:shortcuts`, page key `F1`) opens a non-modal second window
+    with `tiny.win.open('shortcuts', { page: 'shortcuts.html', chrome: { menu: false } })` (same id
+    again focuses it). `shortcuts.html` is a second Vite input (`build.rolldownOptions.input` in
+    `vite.config.ts`); a relative `page` resolves against the dev URL in `tinyjs dev` and the dist
+    folder in builds. It renders `docs/keyboard_shortcuts.md`, parsed by `src/shortcutsDoc.ts`:
+    `#` = window title, `##` headings = sections, paragraphs = intro, items of the form
+    ``- `keys`: text`` become rows (no `: ` in the first 60 chars → a full-width row). Keep that format.
+  - Help > Markdown Syntax (id `help:markdown`) is a third Vite input, `markdown.html` +
+    `src/markdownHelp.ts`: renders all of `docs/markdown_syntax.md` with marked, and in every
+    `| Type | Looks like | Shortcut |` table replaces the "Looks like" cell (GitHub-friendly HTML in the
+    doc) with the app's own `markdownHtml` of the Type cell's text (`<br>` → newline, entities decoded)
+    inside `div.note-text`. So the Type cell must be exactly what to type (multi-line: `<pre>` with
+    `<br>`/`&nbsp;`, since GitHub hides `<br>` in `<code>`).
+  - The note-content CSS (lists, quotes, code, tags, note links) lives in `src/noteContent.css`,
+    `@import`ed by `index.css` and imported by the help page (index.css itself can't be: global
+    resets, `overflow: hidden`). `help.css` (shared layout) uses child selectors (`.help > h1`,
+    `.help > h2`, `section > h2/p`) so it doesn't restyle rendered examples.
+  - Both open through `App.openHelpWindow(id)`; `src/helpWindow.ts` (`setupHelpWindow`) sends external
+    link clicks to `tiny.app.shell.open`, blocks the rest, closes on Esc, blocks the context menu.
 - The tinyjs CLI lives in `%LOCALAPPDATA%\tinyjs` (`cli.js`); read it to answer questions
   about build order or bridge behavior instead of guessing.
 - Mass actions: implemented but **not wired into any menu** (not needed in production yet,
@@ -183,6 +195,17 @@ Project knowledge for coding agents. The tinyjs API reference is the vendored sk
   Ctrl+Enter, Ctrl+Tab and formatting itself. The toolbar pencil button edits the selected
   listed note (disabled with none), or, while editing, calls `revealNoteEditor`
   (`noteEditorDom.ts`) to scroll to the editor.
+- Find/Replace in the editor (`FindPanel.tsx`, pure logic in `src/findText.ts`): `Ctrl+F`/`Ctrl+R` are
+  `Edit` menu accelerators (`edit:find`/`edit:replace`, the browser's find bar/reload otherwise) plus a
+  page keydown path, both through `App.findCommand` (deduped by `acceptShortcut`): it calls the
+  editor's `NoteEditorHandle.openFind`, or with no editor focuses `#find-input`. A textarea can't
+  highlight ranges, so `.find-backdrop` (a mirror div with `textareaTextStyle`, positioned over the
+  body's client area, scroll synced) paints `<mark class="find-hit">` behind a transparent textarea.
+  `.note` is `overflow: hidden`, so the panel sits in flow between title and body (sticky can't work).
+  The selection moves only on reveal requests (`reveal` counter), never on match recompute while typing.
+  Replace focuses the body briefly, since `execCommand` acts on the focused element (keeps `Ctrl+Z`).
+- Dev server gotcha: the user's `tinyjs dev` Vite once kept serving a stale transform of an edited
+  file (missed watch event); touching the file (`LastWriteTime`) fixed it.
 - Selection and scrolling: App bumps `revealGen` to have `NotesPanel` scroll the selected card
   (`:scope > article[data-note-id]` — note-link anchors in bodies carry `data-note-id` too) into view with `block: 'nearest'` (`.notes` has `scroll-padding`). Filter and
   sort changes are detected *during render* (`listKeys` state, React's "adjust state on prop

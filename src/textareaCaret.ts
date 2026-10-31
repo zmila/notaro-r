@@ -12,6 +12,15 @@ export interface CaretRect {
   bottom: number
 }
 
+// The textarea's text layout properties, for an element that must wrap its
+// text the same way (e.g. a highlight layer behind it).
+export function textareaTextStyle(textarea: HTMLTextAreaElement): Record<string, string> {
+  const computed = getComputedStyle(textarea)
+  const style: Record<string, string> = {}
+  for (const name of MIRRORED) style[name] = computed.getPropertyValue(name)
+  return style
+}
+
 // Viewport rectangle of the character at `position` in a textarea, measured
 // on a hidden copy of its text (a textarea has no API for this).
 export function textareaCaretRect(textarea: HTMLTextAreaElement, position: number): CaretRect {

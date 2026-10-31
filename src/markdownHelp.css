@@ -1,0 +1,37 @@
+/* Help > Markdown Syntax window; layout from help.css, note look from noteContent.css */
+:root {
+  --bg-panel: #f4f6f8;
+  --border-soft: #d8dde4;
+}
+
+.markdown-help { max-width: 1000px; }
+.syntax-table th { width: auto; }
+.syntax-table thead th {
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bg-head);
+}
+.syntax-table tbody td:first-child { width: 36%; }
+.syntax-table tbody td:last-child { width: 24%; }
+
+/* "Type": what to type, as plain monospace text */
+.md-raw { font: 12.5px/1.45 Consolas, 'Cascadia Mono', monospace; }
+.md-raw code, .md-raw pre {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+}
+
+/* "Looks like": the note's look; no margins except the ones noteContent.css sets */
+.md-rendered { color: #3b424b; user-select: text; }
+.md-rendered * { margin: 0; }
+.md-rendered code { white-space: normal; }
+.md-rendered pre code { white-space: pre; }
+.md-rendered a { color: var(--accent); }
+.md-rendered .note-link { cursor: default; }

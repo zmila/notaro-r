@@ -1,5 +1,12 @@
 # changelog
 
+## version 0.13.0, 2026-10-31
+### what's new
+- Find and replace in the note being edited: `Ctrl+F` / `Ctrl+R` open a panel with match case, whole word and `*`/`?` wildcard options, previous/next, `Replace` and `All`; with no note being edited, `Ctrl+F` focuses the toolbar's Find field.
+- Help - Markdown syntax: `Help > Markdown Syntax` opens a separate window with every supported marker: what to type, how it looks and its keyboard shortcut.
+
+---
+
 ## version 0.12.0, 2026-10-30
 ### what's new
 - File menu: `Open Database…`, `Save Database As…` and `Reload` items; the window title shows the database file name.

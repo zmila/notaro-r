@@ -73,6 +73,11 @@ export function init(_app: TinyApp) {
       { id: 'note:selectAll', label: 'Select All' },
       { separator: true },
       { id: 'note:delete', label: 'Delete Note', enabled: false },
+      { separator: true },
+      // Ctrl+F/Ctrl+R: WebView2 may swallow them as browser keys (find bar, reload).
+      // In the note being edited: find/replace in its text; else Ctrl+F goes to the Find field.
+      { id: 'edit:find', label: 'Find…', key: 'f' },
+      { id: 'edit:replace', label: 'Replace…', key: 'r', enabled: false },
     ] },
     // checked states are synced from the page (it restores them from tiny.store)
     { title: 'View', items: [
@@ -107,6 +112,7 @@ export function init(_app: TinyApp) {
     { title: 'Help', items: [
       // opens a window from the page (no accelerator: `key` always adds Ctrl; F1 is a page key)
       { id: 'help:shortcuts', label: 'Keyboard Shortcuts' },
+      { id: 'help:markdown', label: 'Markdown Syntax' },
       { separator: true },
       { id: 'about', label: 'About Notaro' },
     ] },
